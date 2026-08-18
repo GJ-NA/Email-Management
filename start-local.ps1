@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $root = [System.IO.Path]::GetFullPath((Split-Path -Parent $MyInvocation.MyCommand.Path))
 Set-Location $root
@@ -25,7 +25,9 @@ function Import-DotEnv([string] $path) {
         if (-not $key -or [Environment]::GetEnvironmentVariable($key)) {
             continue
         }
-        if ($value.Length -ge 2 -and (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'")))) {
+        $doubleQuote = [string][char]34
+        $singleQuote = [string][char]39
+        if ($value.Length -ge 2 -and (($value.StartsWith($doubleQuote) -and $value.EndsWith($doubleQuote)) -or ($value.StartsWith($singleQuote) -and $value.EndsWith($singleQuote)))) {
             $value = $value.Substring(1, $value.Length - 2)
         }
         [Environment]::SetEnvironmentVariable($key, $value, 'Process')
