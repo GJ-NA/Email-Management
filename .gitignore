@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+ENV/
+
+# Local application data and secrets
+runtime/
+data/
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+secret_key.txt
+admin_password.txt
+*.log
+debug_response_*.html
+
+# IDE and operating-system files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local planning / generated files
+.pytest_cache/
+.ruff_cache/
+.test_tmp/
+.tmp/
+.playwright-cli/
+.trellis/
+.codex/
+.agents/
+.ace-tool/
+.qoder/
+.claude/
+.superpowers/
+openspec/
+待办/
+安全漏洞.md
+
+# One-off local scripts
+/get_oauth_token.py
+/scripts/compare_accounts_db.py
+/scripts/export_accounts.py

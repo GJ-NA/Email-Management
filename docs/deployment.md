@@ -1,0 +1,260 @@
+# 🚀 部署指南
+
+## 方式一：使用 Windows `exe`
+
+从 GitHub Releases 下载对应版本的 `EmailManagement-windows-x64-*.zip`，解压后直接运行 `EmailManagement.exe`。
+
+**桌面版首次启动会自动：**
+- 创建本地数据目录
+- 初始化数据库
+- 自动生成并持久化 `SECRET_KEY`
+
+**Windows 默认数据目录：**
+- `%APPDATA%\Email-Management`
+
+默认访问地址仍为 `http://127.0.0.1:5000`。
+
+## 方式二：使用 Docker（推荐服务器部署）
+
+直接使用 GitHub Actions 自动构建的镜像，无需本地构建：
+
+```bash
+# 拉取最新镜像
+docker pull ghcr.io/gj-na/email-management:latest
+
+# 运行容器
+docker run -d \
+  --name email-management \
+  -p 5000:5000 \
+  -v $(pwd)/data:/app/data \
+  -e LOGIN_PASSWORD=replace-with-strong-password \
+  -e SECRET_KEY=replace-with-long-random-secret \
+  ghcr.io/gj-na/email-management:latest
+
+# 查看日志
+docker logs -f email-management
+
+# 停止容器
+docker stop email-management
+docker rm email-management
+```
+
+**首次启动会自动：**
+- 创建数据目录
+- 初始化数据库
+- 创建默认分组和临时邮箱分组
+- 设置默认密码（replace-with-strong-password）
+
+## 方式三：使用 Python 直接运行
+
+```bash
+# 克隆仓库
+git clone https://github.com/GJ-NA/Email-Management.git
+cd Email-Management
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 设置环境变量
+export LOGIN_PASSWORD=replace-with-strong-password
+export SECRET_KEY=replace-with-long-random-secret
+export PORT=5000
+
+# 运行应用
+python email_management.py
+```
+
+访问 `http://localhost:5000` 即可使用。
+服务器部署建议始终显式设置固定 `SECRET_KEY`。
+
+## 运行模式说明
+
+服务需要保持单 worker 运行。Token 刷新管理里的流式任务、导出验证等短期任务使用进程内状态保存；如果自定义部署成多个 worker，POST 初始化任务和后续 SSE 订阅可能落到不同进程，导致任务不存在或过期。
+
+官方 Docker 镜像已固定为 Gunicorn 单 worker，并通过线程处理慢请求：
+
+```bash
+gunicorn -k gthread -w 1 --threads ${GUNICORN_THREADS:-4} ...
+```
+
+如需调整并发，请优先调整 `GUNICORN_THREADS`，不要增加 worker 数。
+
+## 使用 Docker Compose
+
+```yaml
+version: '3.8'
+
+services:
+  email-management:
+    image: ghcr.io/gj-na/email-management:latest
+    container_name: email-management
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - LOGIN_PASSWORD=replace-with-strong-password
+      - SECRET_KEY=replace-with-long-random-secret
+      - FLASK_ENV=production
+      - GPTMAIL_API_KEY=your-api-key
+    restart: unless-stopped
+```
+
+```bash
+# 启动服务
+docker-compose up -d
+
+# 查看定时任务启动日志（应出现“定时任务已启动”）
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+```
+
+## 定时刷新说明
+
+- 应用在 `python email_management.py`、Docker、Docker Compose、Gunicorn 单 worker 模式下都会自动初始化定时任务。
+- 如需确认定时任务是否已启动，可执行 `docker-compose logs -f`，日志中应出现“定时任务已启动”。
+- 若使用 Cron 模式，请确认已在系统设置中开启 `use_cron_schedule`，并填写正确的 5 段 Cron 表达式。
+
+## 环境变量配置
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `SECRET_KEY` | Session 密钥（服务器部署强烈建议固定设置） | Windows `exe` 首次启动会自动生成并持久化；Docker / Python / 生产环境请显式设置固定值，不要随意修改，否则会导致已存储敏感数据无法解密 |
+| `LOGIN_PASSWORD` | 登录密码 | `replace-with-strong-password` |
+| `FLASK_ENV` | 运行环境 | `production` |
+| `LOG_LEVEL` | 全局日志级别（`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`）。默认 `INFO` 会输出出站 `[代理]` 详情（含 Resin Platform/Account，密码已打码）。批量拉信或 Token 刷新时日志较多，生产环境若只需告警可设 `LOG_LEVEL=WARNING` 降噪 | `INFO` |
+| `PORT` | 应用端口 | `5000` |
+| `HOST` | 监听地址 | `0.0.0.0` |
+| `DATABASE_PATH` | 数据库路径 | `data/outlook_accounts.db` |
+| `GPTMAIL_BASE_URL` | GPTMail API 地址 | `https://mail.chatgpt.org.uk` |
+| `GPTMAIL_API_KEY` | GPTMail API Key | `replace-with-api-key` |
+| `DUCKMAIL_BASE_URL` | DuckMail API 地址 | `https://api.duckmail.sbs` |
+| `DUCKMAIL_API_KEY` | DuckMail API Key | 空 |
+| `CLOUDFLARE_WORKER_DOMAIN` | Cloudflare Temp Email Worker 域名，也兼容读取 `WORKER_DOMAIN` | 空 |
+| `CLOUDFLARE_EMAIL_DOMAINS` | Cloudflare 临时邮箱域名列表，逗号分隔，也兼容读取 `EMAIL_DOMAIN` | 空 |
+| `CLOUDFLARE_ADMIN_PASSWORD` | Cloudflare 管理密码，也兼容读取 `ADMIN_PASSWORD` | 空 |
+| `OAUTH_CLIENT_ID` | OAuth 客户端 ID | `建议使用自己的，如果实在搞不到不填的话会使用默认的` |
+| `OAUTH_REDIRECT_URI` | OAuth 重定向 URI | `建议使用自己的，如果实在搞不到不填的话会使用默认的` |
+
+**生成 SECRET_KEY：**
+```bash
+python -c 'import secrets; print(secrets.token_hex(32))'
+```
+
+## 数据持久化
+
+数据库文件存储在 `./data` 目录中，通过 Docker Volume 挂载实现持久化。
+
+自定义外观皮肤文件存储在数据库文件同目录下的 `skins/` 目录。默认数据库路径是 `data/outlook_accounts.db` 时，皮肤目录为 `data/skins/`。Docker 部署应继续挂载整个 `./data:/app/data`，不要只备份单个数据库文件，否则自定义皮肤文件会丢失并回退到内置 `classic` 皮肤。
+
+数据库包含以下表：
+- `settings` - 系统设置（登录密码、API Key 等）
+- `groups` - 邮箱分组
+- `accounts` - Outlook 邮箱账号
+- `account_refresh_logs` - 账号刷新记录
+- `temp_emails` - 临时邮箱
+- `temp_email_messages` - 临时邮箱的邮件
+
+## 端口映射
+
+默认映射 5000 端口，可以在 `docker-compose.yml` 中修改：
+
+```yaml
+ports:
+  - "8080:5000"  # 将容器的 5000 端口映射到主机的 8080 端口
+```
+
+## 镜像说明
+
+项目使用 GitHub Actions 自动构建并推送 Docker 镜像，支持稳定版、开发版和正式版本标签。
+
+### 可用镜像标签
+
+- `ghcr.io/gj-na/email-management:latest` - 默认分支最近一次符合条件的稳定构建
+- `ghcr.io/gj-na/email-management:main` - `main` 分支最近一次符合条件的构建
+- `ghcr.io/gj-na/email-management:dev` - `dev` 分支最近一次符合条件的构建
+- `ghcr.io/gj-na/email-management:vX.Y.Z` - 指定正式版本镜像，由手动发版工作流生成
+
+补充说明：
+
+- 文档改动不会触发 Docker 镜像重建
+- 正式发版时建议优先使用 `vX.Y.Z` 明确版本标签
+- 具体发版流程见仓库根目录的 `RELEASE.md`
+
+### 更新镜像
+
+```bash
+docker pull ghcr.io/gj-na/email-management:latest
+docker-compose down
+docker-compose up -d
+```
+
+### 自己构建镜像（可选）
+
+```bash
+docker build -t email-management .
+docker run -d \
+  --name email-management \
+  -p 5000:5000 \
+  -v $(pwd)/data:/app/data \
+  -e LOGIN_PASSWORD=replace-with-strong-password \
+  email-management
+```
+
+## 生产环境部署
+
+### 使用 Nginx + HTTPS
+
+**1. 安装 Nginx**
+```bash
+sudo apt install nginx certbot python3-certbot-nginx -y
+```
+
+**2. 配置 Nginx** `/etc/nginx/sites-available/email-management`
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket 支持（如果需要）
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+**3. 启用配置**
+```bash
+sudo ln -s /etc/nginx/sites-available/email-management /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+**4. 配置 HTTPS**
+```bash
+sudo certbot --nginx -d your-domain.com
+```
+
+### 使用 Caddy（更简单）
+
+```bash
+sudo apt install caddy -y
+
+# 配置 /etc/caddy/Caddyfile
+your-domain.com {
+    reverse_proxy localhost:5000
+}
+
+# 重载（自动 HTTPS）
+sudo systemctl reload caddy
+```

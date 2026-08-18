@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Management</title>
+    <link rel="icon" href="{{ url_for('favicon') }}" type="image/svg+xml">
+    <!-- DOMPurify for XSS protection -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('bundled_index_css', v=frontend_asset_hash) }}">
+    <link rel="stylesheet" id="activeSkinStylesheet" href="{{ url_for('active_skin_css', v=skin_asset_hash) }}">
+</head>
+
+<body>
+    {% include "partials/index/layout.html" %}
+    {% include "partials/index/dialogs-primary.html" %}
+    {% include "partials/index/dialogs-management.html" %}
+    {% include "partials/index/dialogs-oauth.html" %}
+
+    <!-- 消息提示 -->
+    <div class="toast" id="toast"></div>
+
+    <script src="{{ url_for('static', filename='js/index/01-core.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/02-groups.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/03-temp-emails.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/04-accounts.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/05-emails.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/06-utils-oauth.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/07-settings.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/08-refresh.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/09-tags.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/10-batch-actions.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/11-email-shares.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/12-outlook-upload-accounts.js', v=frontend_asset_hash) }}"></script>
+    <script src="{{ url_for('static', filename='js/index/13-verify.js', v=frontend_asset_hash) }}"></script>
+
+    <!-- 邮件详情弹窗 -->
+    <div id="emailDetailModal" class="email-detail-modal" role="dialog" aria-modal="true"
+        aria-labelledby="emailDetailModalTitle" aria-hidden="true"
+        onmousedown="closeEmailDetailModalOnBackdrop(event)">
+        <div class="email-detail-modal__dialog">
+            <div class="email-detail-modal__titlebar">
+                <div class="email-detail-modal__title" id="emailDetailModalTitle">邮件详情</div>
+                <button class="email-detail-modal__close" type="button" title="关闭邮件详情"
+                    aria-label="关闭邮件详情" onclick="closeEmailDetailModal()">×</button>
+            </div>
+            <div class="email-detail-panel" id="emailDetailPanel" aria-hidden="true">
+                <div class="email-detail-toolbar" id="emailDetailToolbar" style="display:none;">
+                    <button class="fullscreen-btn email-detail-action-btn email-detail-action-btn--fullscreen" type="button"
+                        title="全屏查看" aria-label="全屏查看" onclick="openFullscreenEmail()">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>
+                        </svg>
+                        <span class="email-detail-action-btn__text">全屏查看</span>
+                    </button>
+                    <button class="raw-email-btn email-detail-action-btn email-detail-action-btn--raw" type="button"
+                        title="显示邮件源" aria-label="显示邮件源" onclick="openRawEmailModal()">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                        <span class="email-detail-action-btn__text">显示邮件源</span>
+                    </button>
+                    <label class="email-trust-toggle" title="信任此邮件" aria-label="信任此邮件">
+                        <input type="checkbox" id="trustEmailCheckbox" onchange="toggleTrustMode(this)">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                        </svg>
+                        <span style="user-select: none;">信任此邮件</span>
+                    </label>
+                    <div class="email-detail-toolbar-spacer"></div>
+                    <button class="batch-btn danger email-detail-action-btn email-detail-action-btn--delete" type="button"
+                        title="删除邮件" aria-label="删除邮件" onclick="confirmDeleteCurrentEmail()" style="padding: 4px 8px; font-size: 12px;">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            <line x1="10" y1="11" x2="10" y2="17"></line>
+                            <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                        <span class="email-detail-action-btn__text">删除</span>
+                    </button>
+                </div>
+                <div id="emailDetail">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📄</div>
+                        <div class="empty-state-text">选择一封邮件查看详情</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 全屏查看邮件模态框 -->
+    <div id="fullscreenEmailModal" class="fullscreen-email-modal" onmousedown="closeFullscreenEmailOnBackdrop(event)">
+        <div class="fullscreen-email-header">
+            <div class="fullscreen-email-title" id="fullscreenEmailTitle">邮件详情</div>
+            <button class="fullscreen-close-btn" onclick="closeFullscreenEmail()">×</button>
+        </div>
+        <div class="fullscreen-email-content" id="fullscreenEmailContent">
+            <!-- 邮件内容将在这里显示 -->
+        </div>
+    </div>
+
+    <!-- 原始邮件源码模态框 -->
+    <div id="rawEmailModal" class="fullscreen-email-modal raw-email-modal" onmousedown="closeRawEmailOnBackdrop(event)">
+        <div class="fullscreen-email-header raw-email-header">
+            <div>
+                <div class="fullscreen-email-title" id="rawEmailTitle">原始邮件</div>
+                <div class="raw-email-warning" id="rawEmailWarning">原始邮件包含完整邮件头和路由信息，请谨慎分享。</div>
+            </div>
+            <div class="raw-email-actions">
+                <button class="raw-email-action-btn" type="button" onclick="copyRawEmailSource()">复制</button>
+                <button class="raw-email-action-btn" type="button" onclick="downloadRawEmailSource()">下载 .eml</button>
+                <button class="fullscreen-close-btn" onclick="closeRawEmailModal()">×</button>
+            </div>
+        </div>
+        <pre class="raw-email-content" id="rawEmailContent">点击“显示原始邮件”加载 MIME 源码。</pre>
+    </div>
+</body>
+
+</html>

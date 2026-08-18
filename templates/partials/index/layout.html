@@ -1,0 +1,570 @@
+    <!-- 顶部导航栏 -->
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                <polyline points="22,6 12,13 2,6"></polyline>
+            </svg>
+            <span class="navbar-brand-title">Email Management</span>
+            <div class="navbar-brand-meta">
+                <div class="app-version" id="appVersion">
+                    <button class="app-version-chip" id="appVersionChip" type="button" aria-expanded="false"
+                        aria-controls="appVersionPopover" onclick="return toggleVersionPopover()">
+                        <span class="app-version-chip__label">版本</span>
+                        <span class="app-version-chip__value" id="appVersionValue">v{{ app_version }}</span>
+                        <span class="app-version-chip__upgrade-badge" id="appVersionUpgradeBadge" hidden aria-hidden="true">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M8 12.5V3.5"></path>
+                                <path d="M4.5 7L8 3.5 11.5 7"></path>
+                            </svg>
+                        </span>
+                    </button>
+                    <div class="app-version-popover" id="appVersionPopover" role="dialog" aria-label="版本信息"
+                        aria-hidden="true" hidden>
+                        <div class="app-version-popover__eyebrow">当前版本</div>
+                        <div class="app-version-popover__value" id="appVersionPopoverValue">v{{ app_version }}</div>
+                        <div class="app-version-popover__meta">
+                            <span class="app-version-status" id="appVersionStatus" data-state="checking">检查中</span>
+                            <span class="app-version-popover__hint" id="appVersionHint">正在检查仓库版本...</span>
+                        </div>
+                        <div class="app-version-popover__actions">
+                            <button class="app-version-link" id="copyAppVersionBtn" type="button"
+                                onclick="copyAppVersion()">复制版本号</button>
+                            <a href="{{ changelog_url }}" target="_blank" rel="noreferrer" class="app-version-link"
+                                id="appVersionActionLink" data-default-label="查看更新日志">
+                                查看更新日志
+                            </a>
+                            <button class="app-version-link app-version-link--primary" id="appVersionDockerUpdateBtn"
+                                type="button" data-default-label="Docker 更新" data-unavailable-label="不可在线更新"
+                                onclick="startDockerUpdate()" hidden>
+                                Docker 更新
+                            </button>
+                        </div>
+                        <div class="app-version-popover__hint">
+                            仅 Docker 版本支持在线更新，请参考
+                            <a href="{{ repository_url }}#readme" target="_blank" rel="noreferrer">README 中的「启用界面 Docker 在线更新」</a>
+                            进行设置。
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        <div class="navbar-center">
+            <div class="navbar-search-container" id="navbarSearchContainer">
+                <div class="navbar-search-controls">
+                    <div class="search-container">
+                        <textarea id="globalSearch" class="search-input" rows="1"
+                            placeholder="邮箱|别名|备注|标签"
+                            autocomplete="off" spellcheck="false"></textarea>
+                        <div class="search-scope-wrap" id="accountSearchScopeWrap">
+                            <select id="accountSearchScopeSelect" class="search-scope-select" aria-label="筛选范围"
+                                onchange="handleAccountSearchScopeChange(this.value)">
+                                <option value="all">所有分组</option>
+                                <option value="group" selected>当前分组</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="navbar-actions">
+            <button class="mobile-nav-menu-btn" id="mobileNavMenuBtn" type="button" aria-expanded="false"
+                aria-controls="navbarActionsMenu">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path d="M2 4h12"></path>
+                    <path d="M2 8h12"></path>
+                    <path d="M2 12h12"></path>
+                </svg>
+                操作
+            </button>
+            <div class="navbar-actions-menu" id="navbarActionsMenu">
+                <!-- Mobile only buttons -->
+                <button class="navbar-btn mobile-only-btn" id="refreshTokensBtn" type="button" onclick="showRefreshModal()">Token刷新管理</button>
+                <button class="navbar-btn mobile-only-btn" id="emailShareManagementBtn" type="button" onclick="showEmailShareManagementModal()">分享管理</button>
+                <button class="navbar-btn mobile-only-btn" id="exportAccountsBtn" type="button" onclick="showExportModal()">导出邮箱</button>
+                <button class="navbar-btn mobile-only-btn" id="openSettingsBtn" style="display: inline-flex; align-items: center; gap: 4px;" type="button" onclick="showSettingsModal()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l-.06-.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    <span>设置</span>
+                </button>
+                <button class="navbar-btn mobile-only-btn" id="outlookUploadAccountsBtn" type="button" onclick="showOutlookUploadAccountsModal()">Outlook 邮箱</button>
+                <button class="navbar-btn mobile-only-btn" id="logoutBtn" type="button" onclick="logout()">退出登录</button>
+
+                <!-- Desktop Only "更多功能" Dropdown -->
+                <div class="navbar-dropdown desktop-only-dropdown" id="navbarMoreFunctionsDropdown">
+                    <button class="navbar-icon-btn dropdown-toggle" type="button" title="更多功能" aria-label="更多功能"
+                        aria-expanded="false" aria-controls="navbarMoreFunctionsMenu">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="5" cy="12" r="1.2"></circle>
+                            <circle cx="12" cy="12" r="1.2"></circle>
+                            <circle cx="19" cy="12" r="1.2"></circle>
+                        </svg>
+                    </button>
+                    <div class="navbar-dropdown-menu" id="navbarMoreFunctionsMenu">
+                        <button class="dropdown-item" type="button" onclick="showRefreshModal()">Token 刷新管理</button>
+                        <button class="dropdown-item" type="button" onclick="showEmailShareManagementModal()">分享管理</button>
+                        <button class="dropdown-item" type="button" onclick="showExportModal()">导出邮箱</button>
+                        <div class="dropdown-divider" role="separator"></div>
+                        <button class="dropdown-item" type="button" onclick="showSettingsModal()">系统常规设置</button>
+                        <button class="dropdown-item" type="button" onclick="showOutlookUploadAccountsModal()">Outlook 邮箱</button>
+                        <a class="dropdown-item" href="{{ repository_url }}" target="_blank"
+                            rel="noreferrer noopener">前往 GitHub</a>
+                        <div class="dropdown-divider" role="separator"></div>
+                        <button class="dropdown-item dropdown-item--danger" type="button" onclick="logout()">退出登录</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主容器 -->
+    <div class="main-container">
+        <!-- 分组面板 -->
+        <div class="group-panel" id="groupPanel">
+            <div class="panel-header">
+                <span class="panel-title">分组</span>
+                <div style="display: flex; gap: 4px;">
+                    <button class="panel-action-btn" id="collapseGroupPanelBtn" onclick="toggleGroupPanelCollapse()" title="折叠分组栏">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="11 13 4 8 11 3"></polyline>
+                        </svg>
+                    </button>
+                    <button class="panel-action-btn" onclick="showAddGroupModal()" title="添加分组">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="group-list" id="groupList">
+                <!-- 分组列表将通过 JS 动态加载 -->
+            </div>
+        </div>
+
+        <!-- 邮箱账号面板 -->
+        <div class="account-panel" id="accountPanel">
+            <div class="account-panel-header">
+                <button class="panel-action-btn" id="expandGroupPanelBtn" onclick="toggleGroupPanelCollapse()" title="展开分组栏" style="display: none; flex-shrink: 0; margin-right: 8px;">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="5 3 12 8 5 13"></polyline>
+                    </svg>
+                </button>
+                <div class="account-panel-title" id="accountPanelTitle">
+                    <span class="group-color" id="currentGroupColor" style="background-color: #666"></span>
+                    <span class="current-group-title-wrap">
+                        <span id="currentGroupName">选择分组</span>
+                        <span class="group-id-badge current-group-id" id="currentGroupIdBadge" style="display: none;"></span>
+                    </span>
+                </div>
+
+                <div class="account-panel-header-actions">
+                    <div class="panel-action-subgroup">
+                        <button class="panel-action-btn account-selection-mode-btn" id="accountSelectionModeBtn"
+                            onclick="toggleAccountSelectionMode()" title="批量选择" aria-pressed="false">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="2" width="12" height="12" rx="2"></rect>
+                                <path d="M5 8l2 2 4-4"></path>
+                            </svg>
+                        </button>
+                        <button class="panel-action-btn" onclick="showTagManagementModal()" title="管理标签">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M7 1.5h6v6L6.5 14 2 9.5 7 1.5z"></path>
+                                <circle cx="9.5" cy="5" r="1.2" fill="currentColor"></circle>
+                            </svg>
+                        </button>
+                        <button class="panel-action-btn" id="accountMinimalBtn" onclick="toggleAccountMinimalMode()" title="切换极简展示" aria-pressed="false">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="2.5" width="12" height="2.5" rx="0.5"></rect>
+                                <rect x="2" y="6.75" width="12" height="2.5" rx="0.5"></rect>
+                                <rect x="2" y="11" width="12" height="2.5" rx="0.5"></rect>
+                            </svg>
+                        </button>
+                    </div>
+                    <span class="panel-action-separator"></span>
+                    <div class="panel-action-subgroup">
+                        <button class="panel-action-btn panel-action-btn-accent" onclick="showGetRefreshTokenModal()" title="授权并保存 Outlook 账号">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                        </button>
+                        <button class="panel-action-btn panel-action-btn-primary" onclick="showAddAccountModal()" title="导入邮箱账号">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="8" y1="2" x2="8" y2="14"></line>
+                                <line x1="2" y1="8" x2="14" y2="8"></line>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="account-toolbar">
+                <!-- 临时邮箱渠道筛选 -->
+                <div id="tempEmailProviderFilter" class="toolbar-row" style="display: none;">
+                    <span class="toolbar-label">渠道</span>
+                    <div class="toolbar-chip-group">
+                        <button class="provider-filter-btn" data-provider="all"
+                            onclick="filterTempEmailByProvider('all')">
+                            全部
+                        </button>
+                        <button class="provider-filter-btn" data-provider="gptmail"
+                            onclick="filterTempEmailByProvider('gptmail')">
+                            GPTMail
+                        </button>
+                        <button class="provider-filter-btn" data-provider="duckmail"
+                            onclick="filterTempEmailByProvider('duckmail')">
+                            DuckMail
+                        </button>
+                        <button class="provider-filter-btn" data-provider="cloudflare"
+                            onclick="filterTempEmailByProvider('cloudflare')">
+                            Cloudflare
+                        </button>
+                    </div>
+                </div>
+                <div class="account-toolbar-main-grid">
+                    <div class="sort-control toolbar-row account-toolbar-block">
+                        <div class="sort-control__content">
+                            <span class="toolbar-label">排序</span>
+                            <div class="toolbar-chip-group">
+                                <button class="sort-btn" data-sort="email" onclick="sortAccounts('email')">
+                                    邮箱名
+                                </button>
+                                <button class="sort-btn active" data-sort="created_at" onclick="sortAccounts('created_at')">
+                                    创建时间
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="accountPageSizeContainer" class="account-page-size-row account-toolbar-block">
+                        <div class="account-page-size-control" id="accountPageSizeControl">
+                            <button class="account-page-size-trigger" id="accountPageSizeTrigger" type="button"
+                                aria-haspopup="listbox" aria-expanded="false" aria-controls="accountPageSizeMenu"
+                                onclick="toggleAccountPageSizeMenu(event)">
+                                <span class="account-page-size-trigger-content">
+                                    <span>每页</span>
+                                    <span id="accountPageSizeLabel">200</span>
+                                </span>
+                            </button>
+                            <div class="account-page-size-menu" id="accountPageSizeMenu" role="listbox" aria-label="每页数量">
+                                <button class="account-page-size-option is-selected" type="button" role="option"
+                                    data-page-size-option="100" onclick="selectAccountPageSizeOption('100', event)">
+                                    <span class="account-page-size-option-content"><span>每页</span><span>100</span></span>
+                                </button>
+                                <button class="account-page-size-option" type="button" role="option"
+                                    data-page-size-option="200" onclick="selectAccountPageSizeOption('200', event)">
+                                    <span class="account-page-size-option-content"><span>每页</span><span>200</span></span>
+                                </button>
+                                <button class="account-page-size-option" type="button" role="option"
+                                    data-page-size-option="500" onclick="selectAccountPageSizeOption('500', event)">
+                                    <span class="account-page-size-option-content"><span>每页</span><span>500</span></span>
+                                </button>
+                                <button class="account-page-size-option" type="button" role="option"
+                                    data-page-size-option="1000" onclick="selectAccountPageSizeOption('1000', event)">
+                                    <span class="account-page-size-option-content"><span>每页</span><span>1000</span></span>
+                                </button>
+                                <button class="account-page-size-option" type="button" role="option"
+                                    data-page-size-option="2000" onclick="selectAccountPageSizeOption('2000', event)">
+                                    <span class="account-page-size-option-content"><span>每页</span><span>2000</span></span>
+                                </button>
+                                <button class="account-page-size-option" type="button" role="option"
+                                    data-page-size-option="5000" onclick="selectAccountPageSizeOption('5000', event)">
+                                    <span class="account-page-size-option-content"><span>每页</span><span>5000</span></span>
+                                </button>
+                                <button class="account-page-size-option" type="button" role="option"
+                                    data-page-size-option="10000" onclick="selectAccountPageSizeOption('10000', event)">
+                                    <span class="account-page-size-option-content"><span>每页</span><span>10000</span></span>
+                                </button>
+                            </div>
+                            <select id="accountPageSizeSelect" class="account-page-size-select" tabindex="-1"
+                                aria-hidden="true" onchange="handleAccountPageSizeChange(this.value)">
+                                <option value="100">每页 100</option>
+                                <option value="200" selected>每页 200</option>
+                                <option value="500">每页 500</option>
+                                <option value="1000">每页 1000</option>
+                                <option value="2000">每页 2000</option>
+                                <option value="5000">每页 5000</option>
+                                <option value="10000">每页 10000</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="accountListOptionsRow" class="toolbar-row account-list-options-row">
+                    <div class="account-filter-menu account-filter-menu--filters account-toolbar-block" id="accountFilterMenu">
+                        <button class="account-filter-toggle" id="accountFilterToggleBtn" type="button"
+                            aria-expanded="false" aria-controls="accountFilterPopover"
+                            onclick="toggleAccountFilterMenu(event)" aria-label="打开筛选">
+                            <span>筛选</span>
+                            <span class="account-filter-caret" aria-hidden="true">▾</span>
+                        </button>
+                        <div class="account-filter-popover" id="accountFilterPopover">
+                            <div class="account-filter-popover__header">
+                                <div class="account-filter-popover__heading">
+                                    <span class="account-filter-popover__title">筛选与选择</span>
+                                    <span class="account-filter-popover__summary" id="accountFilterSelectedSummary">未选择邮箱</span>
+                                </div>
+                                <div class="account-filter-popover__selection-actions" aria-label="选择操作">
+                                    <button class="batch-btn batch-btn-secondary" id="accountSelectAllBtn" type="button" onclick="toggleSelectAllAccounts()">全选</button>
+                                    <button class="batch-btn batch-btn-secondary" id="accountClearSelectionBtn" type="button" onclick="clearAccountSelection()">清空</button>
+                                </div>
+                            </div>
+                            <div class="account-filter-popover__section account-filter-popover__tag-section">
+                                <div class="account-filter-popover__section-heading">
+                                    <span class="account-filter-popover__section-title">标签筛选</span>
+                                    <span class="account-filter-popover__section-hint">按标签查看邮箱</span>
+                                </div>
+                                <div id="tagFilterContainer" class="account-tag-filter-slot">
+                                    <!-- 标签筛选由 JS 动态渲染 -->
+                                </div>
+                            </div>
+                            <div class="account-filter-popover__section account-filter-popover__status-section" id="accountVerifyStatusSection">
+                                <div class="account-filter-popover__section-heading">
+                                    <span class="account-filter-popover__section-title">邮箱有效状态</span>
+                                    <span class="account-filter-popover__section-hint">单选筛选</span>
+                                </div>
+                                <div class="account-verify-filter-options" role="radiogroup" aria-label="邮箱有效状态">
+                                    <label class="account-verify-filter-option is-selected" data-account-verify-status-option="all">
+                                        <input type="radio" name="accountVerifyStatusFilter" value="all" checked
+                                            onchange="handleAccountVerifyStatusChange(this.value)">
+                                        <span class="account-verify-filter-dot account-verify-filter-dot--neutral" aria-hidden="true"></span>
+                                        <span class="account-verify-filter-label">全部状态</span>
+                                    </label>
+                                    <label class="account-verify-filter-option" data-account-verify-status-option="unknown">
+                                        <input type="radio" name="accountVerifyStatusFilter" value="unknown"
+                                            onchange="handleAccountVerifyStatusChange(this.value)">
+                                        <span class="account-verify-filter-dot account-verify-filter-dot--muted" aria-hidden="true"></span>
+                                        <span class="account-verify-filter-label">未验活</span>
+                                    </label>
+                                    <label class="account-verify-filter-option" data-account-verify-status-option="imap_ok">
+                                        <input type="radio" name="accountVerifyStatusFilter" value="imap_ok"
+                                            onchange="handleAccountVerifyStatusChange(this.value)">
+                                        <span class="account-verify-filter-dot account-verify-filter-dot--imap" aria-hidden="true"></span>
+                                        <span class="account-verify-filter-label">IMAP有效</span>
+                                    </label>
+                                    <label class="account-verify-filter-option" data-account-verify-status-option="graph_ok">
+                                        <input type="radio" name="accountVerifyStatusFilter" value="graph_ok"
+                                            onchange="handleAccountVerifyStatusChange(this.value)">
+                                        <span class="account-verify-filter-dot account-verify-filter-dot--graph" aria-hidden="true"></span>
+                                        <span class="account-verify-filter-label">Graph有效</span>
+                                    </label>
+                                    <label class="account-verify-filter-option" data-account-verify-status-option="email_ok">
+                                        <input type="radio" name="accountVerifyStatusFilter" value="email_ok"
+                                            onchange="handleAccountVerifyStatusChange(this.value)">
+                                        <span class="account-verify-filter-dot account-verify-filter-dot--both" aria-hidden="true"></span>
+                                        <span class="account-verify-filter-label">邮箱有效</span>
+                                    </label>
+                                    <label class="account-verify-filter-option" data-account-verify-status-option="invalid">
+                                        <input type="radio" name="accountVerifyStatusFilter" value="invalid"
+                                            onchange="handleAccountVerifyStatusChange(this.value)">
+                                        <span class="account-verify-filter-dot account-verify-filter-dot--invalid" aria-hidden="true"></span>
+                                        <span class="account-verify-filter-label">邮箱失效</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="account-filter-menu account-batch-menu account-toolbar-block" id="accountBatchMenu">
+                        <button class="account-filter-toggle" id="accountBatchToggleBtn" type="button"
+                            aria-expanded="false" aria-controls="accountBatchPopover"
+                            onclick="toggleAccountBatchMenu(event)" aria-label="打开批量操作">
+                            <span>批量操作</span>
+                            <span class="account-filter-selection-count" id="accountFilterSelectionCount" hidden></span>
+                            <span class="account-filter-caret" aria-hidden="true">▾</span>
+                        </button>
+                        <div class="account-filter-popover account-batch-popover" id="accountBatchPopover">
+                            <div class="account-filter-empty" id="accountFilterEmptyState">
+                                选择邮箱后显示批量操作
+                            </div>
+                            <div id="batchActionBar" class="batch-action-bar">
+                                <div class="batch-action-bar__header">
+                                    <div class="batch-action-bar__summary">
+                                        <span id="selectedCount" class="batch-selection-count">已选 0 项</span>
+                                    </div>
+                                </div>
+                                <div class="batch-action-bar__body">
+                                    <section class="batch-action-section batch-action-section--status">
+                                        <div class="batch-action-section__header">
+                                            <span class="batch-action-section__title">账号状态</span>
+                                            <span class="batch-action-section__hint">刷新 Token 与验活</span>
+                                        </div>
+                                        <div class="batch-action-section__actions">
+                                            <button class="batch-btn batch-status-btn batch-status-btn--refresh" id="batchRefreshTokensBtn"
+                                                type="button" onclick="refreshSelectedAccounts()" title="选择邮箱后批量刷新 Token" disabled>
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                    <path d="M20 11a8 8 0 0 0-14.9-3.9L3 9"></path>
+                                                    <path d="M3 4v5h5"></path>
+                                                    <path d="M4 13a8 8 0 0 0 14.9 3.9L21 15"></path>
+                                                    <path d="M21 20v-5h-5"></path>
+                                                </svg>
+                                                <span data-batch-label>刷新 Token</span>
+                                            </button>
+                                            <button class="batch-btn batch-status-btn batch-status-btn--verify" id="batchVerifyAccountsBtn"
+                                                type="button" onclick="verifySelectedAccounts()" title="选择邮箱后批量验活" disabled>
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                    <path d="M12 3l7 4v5c0 4.6-3 7.7-7 9-4-1.3-7-4.4-7-9V7l7-4z"></path>
+                                                    <path d="m9 12 2 2 4-4"></path>
+                                                </svg>
+                                                <span data-batch-label>批量验活</span>
+                                            </button>
+                                        </div>
+                                    </section>
+
+                                    <section class="batch-action-section batch-action-section--data">
+                                        <div class="batch-action-section__header">
+                                            <span class="batch-action-section__title">数据</span>
+                                            <span class="batch-action-section__hint">复制与导出</span>
+                                        </div>
+                                        <div class="batch-action-section__actions">
+                                            <button class="batch-btn batch-btn-accent" id="batchCopyEmailsBtn" onclick="copySelectedAccounts()">复制邮箱</button>
+                                            <button class="batch-btn batch-btn-accent" id="batchExportAccountsBtn" onclick="exportSelectedAccounts()">导出</button>
+                                        </div>
+                                    </section>
+
+                                    <section class="batch-action-section batch-action-section--authorization">
+                                        <div class="batch-action-section__header">
+                                            <span class="batch-action-section__title">授权</span>
+                                            <span class="batch-action-section__hint">加入自动授权队列</span>
+                                        </div>
+                                        <div class="batch-action-section__actions">
+                                            <button class="batch-btn batch-btn-accent" id="batchOutlookAutoAuthBtn" onclick="queueSelectedAccountsForOutlookAutoAuth()">加入自动授权</button>
+                                        </div>
+                                    </section>
+
+                                    <section class="batch-action-section batch-action-section--mail-settings">
+                                        <div class="batch-action-section__header">
+                                            <span class="batch-action-section__title">邮箱设置</span>
+                                            <span class="batch-action-section__hint">转发与代理</span>
+                                        </div>
+                                        <div class="batch-action-section__actions">
+                                            <button class="batch-btn batch-btn-info" id="batchEnableForwardingBtn" onclick="enableForwardingForSelectedAccounts()">开启转发</button>
+                                            <button class="batch-btn batch-btn-info" id="batchDisableForwardingBtn" onclick="disableForwardingForSelectedAccounts()">取消转发</button>
+                                            <button class="batch-btn batch-btn-info" id="batchProxyBtn" onclick="showBatchProxyModal()">代理</button>
+                                        </div>
+                                    </section>
+
+                                    <section class="batch-action-section batch-action-section--organize">
+                                        <div class="batch-action-section__header">
+                                            <span class="batch-action-section__title">整理</span>
+                                            <span class="batch-action-section__hint">分组与标签</span>
+                                        </div>
+                                        <div class="batch-action-section__actions">
+                                            <button class="batch-btn batch-btn-neutral" id="batchMoveGroupBtn" onclick="showBatchMoveGroupModal()">移动</button>
+                                            <button class="batch-btn batch-btn-neutral" id="batchAddTagBtn" onclick="showBatchTagModal('add')">标签+</button>
+                                            <button class="batch-btn batch-btn-neutral" id="batchRemoveTagBtn" onclick="showBatchTagModal('remove')">标签-</button>
+                                        </div>
+                                    </section>
+
+                                    <section class="batch-action-section batch-action-section--danger">
+                                        <div class="batch-action-section__header">
+                                            <span class="batch-action-section__title">危险操作</span>
+                                            <span class="batch-action-section__hint">删除后不可恢复</span>
+                                        </div>
+                                        <div class="batch-action-section__actions">
+                                            <button class="batch-btn batch-btn-danger" id="batchDeleteAccountsBtn" onclick="deleteSelectedAccounts()">删除</button>
+                                        </div>
+                                    </section>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+            <div class="account-list" id="accountList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📁</div>
+                    <div class="empty-state-text">请从左侧选择一个分组</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="account-panel-resizer" id="accountPanelResizer" role="separator"
+            aria-orientation="vertical"
+            aria-label="调整邮箱账号列表宽度"
+            aria-valuemin="340"
+            aria-valuemax="620"
+            aria-valuenow="340"
+            tabindex="0"
+            title="拖动调整邮箱账号列表宽度，双击恢复默认宽度"></div>
+
+        <!-- 内容区域 -->
+        <div class="content-area">
+            <div class="mobile-quickbar" id="mobileQuickbar">
+                <button class="mobile-quickbar-btn" id="mobileGroupBtn" type="button">
+                    <span class="mobile-quickbar-label">分组</span>
+                    <span class="mobile-quickbar-value" id="mobileCurrentGroup">未选择</span>
+                </button>
+                <button class="mobile-quickbar-btn" id="mobileAccountBtn" type="button">
+                    <span class="mobile-quickbar-label">邮箱</span>
+                    <span class="mobile-quickbar-value" id="mobileCurrentAccount">未选择</span>
+                </button>
+                <button class="mobile-quickbar-btn" id="mobileListBtn" type="button">
+                    <span class="mobile-quickbar-label">邮件</span>
+                    <span class="mobile-quickbar-value" id="mobileListButtonHint">当前列表</span>
+                </button>
+            </div>
+
+            <!-- 邮件列表面板 -->
+            <div class="email-list-panel" id="emailListPanel">
+                <div class="email-list-header">
+                    <div class="email-list-header-top">
+                        <div class="email-list-title-wrap">
+                            <div class="email-list-title-row">
+                                <h2 style="margin: 0;">邮件</h2>
+                                <span class="email-count" id="emailCount"></span>
+                            </div>
+                            <div class="email-list-header-meta">
+                                <span class="method-tag" id="methodTag" style="display:none;"></span>
+                                <span class="email-list-hint">按时间顺序查看邮件</span>
+                            </div>
+                        </div>
+                        <button class="refresh-btn" onclick="refreshEmails()" title="获取邮件">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="folder-tabs" id="folderTabs" style="display: none;">
+                        <button class="folder-tab active" data-folder="all" onclick="switchFolder('all')">
+                            📥 全部邮件
+                        </button>
+                        <button class="folder-tab" data-folder="inbox" onclick="switchFolder('inbox')">
+                            📨 收件箱
+                        </button>
+                        <button class="folder-tab" data-folder="junkemail" onclick="switchFolder('junkemail')">
+                            ⚠️ 垃圾邮件
+                        </button>
+                    </div>
+                    <div class="new-mail-notice" id="newMailNotice" role="status" hidden></div>
+                    <div class="mail-sync-status" id="mailSyncStatus" role="status" hidden></div>
+                </div>
+                <div class="email-list" id="emailList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📬</div>
+                        <div class="empty-state-text">请从左侧选择一个邮箱账号</div>
+                    </div>
+                </div>
+                <!-- Email Batch Action Bar -->
+                <div id="emailBatchActionBar" class="batch-action-bar">
+                    <div class="batch-action-bar__summary">
+                        <span id="emailSelectedCount" class="batch-selection-count">已选 0 项</span>
+                    </div>
+                    <div class="batch-action-bar__controls">
+                        <div class="batch-action-group">
+                            <button class="batch-btn batch-btn-secondary" id="emailSelectAllBtn" onclick="toggleSelectAllEmails()">全选</button>
+                            <button class="batch-btn batch-btn-secondary" onclick="clearEmailSelection()">清空选择</button>
+                        </div>
+                        <button class="batch-btn batch-btn-primary" id="batchMarkReadBtn" onclick="markSelectedEmailsAsRead()">
+                            设为已读
+                        </button>
+                        <button class="batch-btn batch-btn-danger" onclick="confirmBatchDeleteEmails()">
+                            删除
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <div class="mobile-panel-scrim" id="mobilePanelScrim"></div>
