@@ -51,9 +51,11 @@ Email Management/
 
 ## Windows 使用
 
-### 使用已有发布版
+### 使用仓库中的 Windows 版本
 
-从 [GitHub Releases](https://github.com/GJ-NA/Email-Management/releases) 下载 Windows 压缩包，解压后双击 `EmailManagement.exe`。发布包默认使用：
+当前仓库还没有创建正式的 GitHub Release。可以直接下载仓库代码压缩包，解压后在根目录找到已构建的 `EmailManagement.exe` 并双击运行。GitHub 页面中的 `Packages` 软件包与 Windows EXE 是不同的发布渠道，不能替代这个桌面程序。
+
+Windows 版本默认使用：
 
 ```text
 %APPDATA%\Email Management\
