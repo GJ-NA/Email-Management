@@ -262,7 +262,7 @@ Get-ChildItem static,browser-extension -Recurse -File -Filter *.js |
 
 ## 来源与改进说明
 
-本项目是独立仓库 `GJ-NA/Email-Management` 中的本地整合和改进版本，主要参考：
+本项目是基于以下项目的本地整合和改进版本：
 
 1. [assast/outlookEmail](https://github.com/assast/outlookEmail)：主 Web 应用、Graph / IMAP 邮件读取、账号管理、分组、Token 刷新、前端界面和运行框架的基础来源。
 2. [fangxiaobaiqaq1/outlook-mail-helper](https://github.com/fangxiaobaiqaq1/outlook-mail-helper)：批量验活、并发任务、收件探测和导入格式处理思路的参考来源；其独立 PHP 应用和数据库没有直接嵌入本仓库。
