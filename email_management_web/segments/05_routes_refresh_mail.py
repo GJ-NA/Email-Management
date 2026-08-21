@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 
 TOKEN_REFRESH_SCOPE_KEY = 'all_outlook'
-VALID_ACCOUNT_REFRESH_STATUSES = {'success', 'failed', 'never'}
 VALID_REFRESH_STATUS_FILTERS = {'all', 'success', 'failed', 'never'}
 TOKEN_REFRESH_CONFLICT_MESSAGE = '已有 Token 全量刷新任务在执行，请稍后再试'
 TOKEN_REFRESH_STOP_REQUESTED_MESSAGE = '已请求停止，当前账号处理完成后会结束任务'
@@ -30,13 +29,6 @@ TOKEN_REFRESH_SQLITE_TIMEOUT_SECONDS = 30
 token_refresh_stop_event = threading.Event()
 selected_refresh_tasks: Dict[str, Dict[str, Any]] = {}
 selected_refresh_tasks_lock = threading.Lock()
-
-
-def normalize_account_refresh_status_value(status: Any) -> str:
-    normalized = str(status or '').strip().lower()
-    if normalized in VALID_ACCOUNT_REFRESH_STATUSES:
-        return normalized
-    return 'never'
 
 
 def normalize_refresh_status_filter(status: Any) -> str:

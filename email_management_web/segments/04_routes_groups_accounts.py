@@ -1519,9 +1519,6 @@ def api_update_account(account_id):
             imap_host = provider_meta.get('imap_host', '')
             imap_port = provider_meta.get('imap_port', 993)
 
-    if False:
-        return jsonify({'success': False, 'error': '邮箱、Client ID 和 Refresh Token 不能为空'})
-
     if aliases_provided:
         _, alias_errors = validate_account_aliases(account_id, email_addr, aliases)
         if alias_errors:

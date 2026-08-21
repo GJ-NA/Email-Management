@@ -886,13 +886,19 @@ def process_forwarding_job():
 
     with app.app_context():
         try:
+            if not get_bool_setting('forwarding_enabled', True):
+                app.logger.debug('[forward] skip job: forwarding is disabled')
+                return {'success': True, 'skipped': True, 'reason': 'forwarding_disabled'}
+
             job_config = build_forwarding_job_config()
             if not (
                 job_config['email_enabled']
                 or job_config['telegram_enabled']
                 or job_config['wecom_enabled']
             ):
-                safe_console_print('[forward] skip job: no active channels configured')
+                # No configured channel is a normal idle state, so keep it out of
+                # the foreground console while retaining an opt-in debug trace.
+                app.logger.debug('[forward] skip job: no active channels configured')
                 return {'success': True, 'skipped': True, 'reason': 'no_active_channels'}
 
             accounts = get_forwarding_enabled_accounts()
@@ -939,6 +945,10 @@ def api_trigger_forwarding_check():
         result = process_forwarding_job()
         if result.get('reason') == 'already_running':
             return jsonify({'success': False, 'error': '转发检查正在执行中，请稍后再试'}), 409
+        if result.get('reason') == 'forwarding_disabled':
+            return jsonify({'success': True, 'message': '邮件转发已关闭，未执行转发检查'})
+        if result.get('reason') == 'no_active_channels':
+            return jsonify({'success': True, 'message': '当前未配置可用转发渠道，未执行转发检查'})
         return jsonify({'success': True, 'message': '已触发一次转发检查，请查看转发历史或容器日志'})
     except Exception as exc:
         return jsonify({'success': False, 'error': f'触发转发检查失败: {str(exc)}'})

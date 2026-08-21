@@ -713,6 +713,82 @@
             margin-bottom: 0;
         }
 
+        .import-account-file-picker {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+            margin: 0 0 10px;
+        }
+
+        .import-account-file-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        .import-account-file-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            flex: 0 0 auto;
+            min-height: 36px;
+            padding: 0 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 7px;
+            background: #fff;
+            color: #374151;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+        }
+
+        .import-account-file-button:hover {
+            border-color: #9ca3af;
+            background: #f9fafb;
+            color: #111827;
+        }
+
+        .import-account-file-button:focus-visible,
+        .import-account-file-clear:focus-visible {
+            outline: 2px solid #2563eb;
+            outline-offset: 2px;
+        }
+
+        .import-account-file-name {
+            min-width: 0;
+            overflow: hidden;
+            color: #6b7280;
+            font-size: 13px;
+            line-height: 1.35;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .import-account-file-clear {
+            flex: 0 0 auto;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: #6b7280;
+            font: inherit;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .import-account-file-clear:hover {
+            color: #b91c1c;
+        }
+
         .import-account-textarea {
             min-height: 420px;
             height: min(52vh, 520px);
@@ -1831,6 +1907,11 @@
             align-content: center;
         }
 
+        .forwarding-inline-control--primary {
+            border-color: #bfdbfe;
+            background: #eff6ff;
+        }
+
         .forwarding-inline-toggle {
             min-height: 22px;
         }
@@ -2206,6 +2287,15 @@
             .import-account-textarea {
                 min-height: 260px;
                 height: 320px;
+            }
+
+            .import-account-file-picker {
+                align-items: flex-start;
+                flex-wrap: wrap;
+            }
+
+            .import-account-file-name {
+                max-width: calc(100% - 120px);
             }
 
             .import-custom-imap {

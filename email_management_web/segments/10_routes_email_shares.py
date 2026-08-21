@@ -71,10 +71,6 @@ def get_email_share_status(share: Dict[str, Any]) -> str:
     return EMAIL_SHARE_STATUS_ACTIVE
 
 
-def is_email_share_active(share: Dict[str, Any]) -> bool:
-    return get_email_share_status(share) == EMAIL_SHARE_STATUS_ACTIVE
-
-
 def build_email_share_url(token: str) -> str:
     if not token:
         return ''

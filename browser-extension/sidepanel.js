@@ -1902,6 +1902,7 @@
         </div>
         <div class="card">
           <div class="item-title">转发</div>
+          <label class="check-row"><input id="settingForwardingEnabled" type="checkbox" ${boolSetting(settings.forwarding_enabled, true) ? 'checked' : ''}><span>启用邮件转发</span></label>
           <div class="inline-checks">
             <label class="check-row"><input name="settingForwardChannel" value="smtp" type="checkbox" ${Array.isArray(settings.forward_channels) && settings.forward_channels.includes('smtp') ? 'checked' : ''}><span>SMTP</span></label>
             <label class="check-row"><input name="settingForwardChannel" value="telegram" type="checkbox" ${Array.isArray(settings.forward_channels) && settings.forward_channels.includes('telegram') ? 'checked' : ''}><span>Telegram</span></label>
@@ -1993,6 +1994,7 @@
       refresh_cron: valueOf('settingRefreshCron'),
       use_cron_schedule: checked('settingUseCron'),
       enable_scheduled_refresh: checked('settingScheduledRefresh'),
+      forwarding_enabled: checked('settingForwardingEnabled'),
       show_account_created_at: checked('settingShowCreated'),
       show_account_sort_order: checked('settingShowSort'),
       show_group_id: checked('settingShowGroupId'),

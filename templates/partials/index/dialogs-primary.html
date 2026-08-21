@@ -182,6 +182,23 @@
                     <section class="import-account-source">
                         <div class="form-group import-account-input-group">
                             <label class="form-label">账号信息</label>
+                            <div class="import-account-file-picker">
+                                <input type="file" id="accountTxtFile" class="import-account-file-input"
+                                    accept=".txt,text/plain" onchange="handleAccountTxtFileChange(event)">
+                                <button type="button" class="import-account-file-button"
+                                    onclick="document.getElementById('accountTxtFile').click()">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <path d="M14 2v6h6"></path>
+                                        <path d="M8 13h8M8 17h6"></path>
+                                    </svg>
+                                    <span>选择 TXT 文件</span>
+                                </button>
+                                <span class="import-account-file-name" id="accountTxtFileName">未选择文件</span>
+                                <button type="button" class="import-account-file-clear" id="accountTxtFileClear"
+                                    onclick="clearAccountTxtFile()" hidden aria-label="清除 TXT 文件和内容">清除</button>
+                            </div>
                             <textarea class="form-textarea import-account-textarea" id="accountInput"
                                 placeholder="邮箱----密码----client_id----refresh_token"></textarea>
                             <div class="form-hint" id="importFormatHint">Outlook 支持两种格式并自动识别：邮箱----密码----client_id----refresh_token 或 邮箱----密码----refresh_token----client_id

@@ -40,6 +40,18 @@ Email Management/
 
 当前工作区已经配置了本地 Python 虚拟环境，启动脚本会优先使用根目录的 `.venv`，不会自动下载依赖。
 
+### 推荐：使用桌面版 exe
+
+如果已经拿到发布包，直接双击 `EmailManagement.exe` 即可。它会自动启动本地服务、打开浏览器，并在 Windows 系统托盘中保留“打开界面”和“退出”菜单；数据默认保存到 `%APPDATA%\Email Management`。
+
+如果需要在当前源码目录生成 exe，首次运行下面的构建脚本即可：
+
+```powershell
+.\scripts\build-windows-exe.bat
+```
+
+构建完成后双击项目根目录的 `EmailManagement.exe`。构建脚本会在根目录保留一个不含密钥的 `.env`，让本地 exe 继续使用当前项目的 `runtime` 数据；以后日常使用不需要再打开 PowerShell 或运行启动脚本。若要让打包版使用自定义端口或其他配置，直接编辑 exe 同目录的 `.env` 文件；也可以设置 `EMAIL_MANAGEMENT_ENV_FILE` 指向配置文件。
+
 ```powershell
 Copy-Item .env.example .env
 .\start-email-management.bat

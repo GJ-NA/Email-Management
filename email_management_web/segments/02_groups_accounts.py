@@ -100,30 +100,6 @@ def get_group_by_id(group_id: int, db=None) -> Optional[Dict]:
     return group
 
 
-def get_child_groups(parent_id: Optional[int], db=None) -> List[Dict]:
-    """获取指定父分组下的直接子分组。"""
-    database = db or get_db()
-    if parent_id is None:
-        rows = database.execute('''
-            SELECT * FROM groups
-            WHERE parent_id IS NULL
-            ORDER BY
-                CASE WHEN name = '临时邮箱' THEN 0 ELSE 1 END,
-                sort_order,
-                id
-        ''').fetchall()
-    else:
-        rows = database.execute('''
-            SELECT * FROM groups
-            WHERE parent_id = ?
-            ORDER BY sort_order, id
-        ''', (parent_id,)).fetchall()
-    groups = [dict(row) for row in rows]
-    for group in groups:
-        group['color'] = normalize_hex_color(group.get('color'))
-    return groups
-
-
 def get_descendant_group_ids(group_id: int, db=None) -> List[int]:
     """返回分组自身及所有后代分组 ID，顺序为深度优先。"""
     database = db or get_db()
@@ -396,11 +372,6 @@ def update_group(group_id: int, name: str, description: str, color: str,
         return True
     except Exception:
         return False
-
-
-def delete_group(group_id: int) -> bool:
-    """删除分组（将该分组下的邮箱移到默认分组）"""
-    return delete_group_tree(group_id).get('success', False)
 
 
 def delete_group_tree(group_id: int) -> Dict[str, Any]:
@@ -1369,16 +1340,6 @@ def get_group_inherited_proxy_config(group_row: Optional[Dict[str, Any]], db=Non
     return get_empty_proxy_config()
 
 
-def get_group_direct_proxy_config(group_row: Optional[Dict[str, Any]]) -> Dict[str, str]:
-    if not group_row:
-        return get_empty_proxy_config()
-    return {
-        'proxy_url': group_row.get('proxy_url', '') or '',
-        'fallback_proxy_url_1': group_row.get('fallback_proxy_url_1', '') or '',
-        'fallback_proxy_url_2': group_row.get('fallback_proxy_url_2', '') or '',
-    }
-
-
 def get_account_proxy_failover_urls(account: Optional[Dict[str, Any]], db=None) -> List[str]:
     """出站用回退代理列表（含 {mail} 展开）。"""
     proxy_config = get_account_resolved_proxy_config(account, db=db)
@@ -1386,22 +1347,6 @@ def get_account_proxy_failover_urls(account: Optional[Dict[str, Any]], db=None) 
         proxy_config.get('fallback_proxy_url_1', '') or '',
         proxy_config.get('fallback_proxy_url_2', '') or '',
     ]
-
-
-def get_group_proxy_failover_urls(group_row: Optional[Dict[str, Any]]) -> List[str]:
-    if not group_row:
-        return ['', '']
-    return [
-        group_row.get('fallback_proxy_url_1', '') or '',
-        group_row.get('fallback_proxy_url_2', '') or '',
-    ]
-
-
-def get_group_proxy_url(group_row: Optional[Dict[str, Any]]) -> str:
-    if not group_row:
-        return ''
-    return group_row.get('proxy_url', '') or ''
-
 
 
 def get_account_by_email(email_addr: str) -> Optional[Dict]:
@@ -3794,25 +3739,6 @@ def resolve_outlook_token_order(third: str, fourth: str,
     if account_format == 'refresh_token_client_id':
         return fourth, third
     return third, fourth
-
-
-def parse_account_string(account_str: str, account_format: str = 'client_id_refresh_token') -> Optional[Dict]:
-    parts = [part.strip() for part in account_str.strip().split('----')]
-    if len(parts) < 4 or not parts[0]:
-        return None
-
-    email_addr, password, third, fourth = parts[:4]
-    client_id, refresh_token = resolve_outlook_token_order(third, fourth, account_format)
-
-    if not client_id or not refresh_token:
-        return None
-
-    return {
-        'email': email_addr,
-        'password': password,
-        'client_id': client_id,
-        'refresh_token': refresh_token
-    }
 
 
 # ==================== Graph API 方式 ====================

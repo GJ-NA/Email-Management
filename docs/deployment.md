@@ -10,9 +10,19 @@
 - 自动生成并持久化 `SECRET_KEY`
 
 **Windows 默认数据目录：**
-- `%APPDATA%\Email-Management`
+- `%APPDATA%\Email Management`
 
 默认访问地址仍为 `http://127.0.0.1:5000`。
+
+### 从源码构建 Windows `exe`
+
+在项目根目录双击 `scripts\build-windows-exe.bat`，脚本会优先使用根目录 `.venv`，必要时安装 PyInstaller，并生成：
+
+```text
+EmailManagement.exe
+```
+
+以后直接双击这个 exe 即可启动，不需要再运行 PowerShell 启动脚本。源码构建脚本会在 exe 同目录生成一个本地 `.env`，让 exe 复用项目的 `runtime` 数据；发布包不包含这个文件，发布版运行数据保存在 `%APPDATA%\Email Management`。
 
 ## 方式二：使用 Docker（推荐服务器部署）
 

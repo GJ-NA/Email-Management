@@ -12,6 +12,7 @@ segments_root = project_root / "email_management_web" / "segments"
 datas = [
     (str(project_root / "templates"), "templates"),
     (str(project_root / "static"), "static"),
+    (str(project_root / "assets"), "assets"),
     (str(project_root / "email_management_web" / "segments"), "email_management_web/segments"),
     (str(project_root / "VERSION"), "."),
 ]
@@ -39,6 +40,7 @@ def collect_segment_hiddenimports():
 
 hiddenimports = collect_segment_hiddenimports()
 app_version = (project_root / "VERSION").read_text(encoding="utf-8").strip()
+icon_path = project_root / "assets" / "email-management-icon.ico"
 codesign_identity = os.getenv("MACOS_CODESIGN_IDENTITY") or None
 entitlements_file = os.getenv("MACOS_ENTITLEMENTS_FILE") or None
 
@@ -117,6 +119,7 @@ else:
         disable_windowed_traceback=False,
         argv_emulation=False,
         target_arch=None,
+        icon=str(icon_path),
         codesign_identity=codesign_identity,
         entitlements_file=entitlements_file,
     )

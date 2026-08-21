@@ -8,6 +8,7 @@ from typing import Callable
 
 from PIL import Image, ImageDraw
 import pystray
+from email_management_web.runtime import resource_path
 
 
 class WindowsTrayApp:
@@ -46,10 +47,18 @@ class WindowsTrayApp:
             self.close()
 
     def _build_icon(self) -> Image.Image:
-        image = Image.new("RGBA", (64, 64), (18, 22, 33, 255))
-        draw = ImageDraw.Draw(image)
-        draw.rounded_rectangle((6, 10, 58, 54), radius=12, fill=(43, 122, 241, 255))
-        draw.rectangle((16, 18, 48, 42), fill=(255, 255, 255, 255))
-        draw.polygon([(16, 18), (32, 32), (48, 18)], fill=(214, 231, 255, 255))
-        draw.rectangle((22, 40, 42, 46), fill=(214, 231, 255, 255))
-        return image
+        icon_path = resource_path("assets", "email-management-icon.png")
+        try:
+            with Image.open(icon_path) as source:
+                source = source.convert("RGBA")
+                source.thumbnail((64, 64), Image.Resampling.LANCZOS)
+                image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+                position = ((64 - source.width) // 2, (64 - source.height) // 2)
+                image.alpha_composite(source, position)
+                return image
+        except (FileNotFoundError, OSError):
+            image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(image)
+            draw.rounded_rectangle((10, 16, 54, 48), radius=5, outline=(26, 26, 26, 255), width=4)
+            draw.line((11, 17, 32, 35, 53, 17), fill=(26, 26, 26, 255), width=4, joint="curve")
+            return image

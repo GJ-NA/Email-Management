@@ -1,7 +1,6 @@
 import importlib
 import json
 import os
-import tempfile
 import urllib.parse
 import unittest
 from unittest.mock import patch

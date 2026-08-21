@@ -112,8 +112,8 @@ git push origin v2.0.16
 
 ### 1. 构建 Windows `exe`
 
-- 使用 `pyinstaller --noconfirm --clean email_management.spec`
-- 打包 `dist/EmailManagement.exe`
+- 使用 `scripts\build-windows-exe.ps1` 或双击 `scripts\build-windows-exe.bat`
+- 打包项目根目录的 `EmailManagement.exe`
 - 与 `README.md` 一起压缩为发布附件
 
 ### 2. 构建 macOS DMG

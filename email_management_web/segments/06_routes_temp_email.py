@@ -75,18 +75,6 @@ def get_temp_email_detail_from_api(message_id: str) -> Optional[Dict]:
     return None
 
 
-def delete_temp_email_from_api(message_id: str) -> bool:
-    """从 GPTMail API 删除邮件"""
-    result = gptmail_request('DELETE', f'/api/email/{message_id}')
-    return result and result.get('success', False)
-
-
-def clear_temp_emails_from_api(email_addr: str) -> bool:
-    """清空 GPTMail 邮箱的所有邮件"""
-    result = gptmail_request('DELETE', '/api/emails/clear', params={'email': email_addr})
-    return result and result.get('success', False)
-
-
 # ==================== Cloudflare Temp Email API ====================
 
 def get_cloudflare_channel_for_request(channel: Optional[Dict[str, Any]] = None,
@@ -906,12 +894,6 @@ def duckmail_get_message_detail(token: str, message_id: str) -> Optional[Dict]:
     return None
 
 
-def duckmail_delete_message(token: str, message_id: str) -> bool:
-    """删除 DuckMail 邮件"""
-    result = duckmail_request('DELETE', f'/messages/{message_id}', token=token)
-    return result is not None and result.get('success', False)
-
-
 def duckmail_delete_account(token: str, account_id: str) -> bool:
     """删除 DuckMail 账户"""
     result = duckmail_request('DELETE', f'/accounts/{account_id}', token=token)
@@ -1544,17 +1526,6 @@ def get_temp_email_message_by_id(message_id: str) -> Optional[Dict]:
     cursor = db.execute('SELECT * FROM temp_email_messages WHERE message_id = ?', (message_id,))
     row = cursor.fetchone()
     return dict(row) if row else None
-
-
-def delete_temp_email_message(message_id: str) -> bool:
-    """删除临时邮件"""
-    db = get_db()
-    try:
-        db.execute('DELETE FROM temp_email_messages WHERE message_id = ?', (message_id,))
-        db.commit()
-        return True
-    except Exception:
-        return False
 
 
 def get_temp_email_count() -> int:

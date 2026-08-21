@@ -371,6 +371,13 @@
                     <div class="settings-panel settings-panel-stack forwarding-console">
                         <div class="forwarding-toolbar">
                             <div class="forwarding-toolbar__controls">
+                                <div class="forwarding-inline-control forwarding-inline-control--toggle forwarding-inline-control--primary">
+                                    <label class="settings-toggle settings-toggle--inline forwarding-inline-toggle">
+                                        <input type="checkbox" id="forwardingEnabled" checked>
+                                        <span class="form-label">启用邮件转发</span>
+                                    </label>
+                                    <div class="form-hint">关闭后暂停所有自动转发，不影响收件、验活和 Token 刷新。</div>
+                                </div>
                                 <div class="forwarding-inline-control">
                                     <label class="form-label">轮询间隔</label>
                                     <div class="input-inline">

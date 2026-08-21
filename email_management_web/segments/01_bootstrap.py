@@ -2148,6 +2148,10 @@ def init_db():
         INSERT OR IGNORE INTO settings (key, value)
         VALUES ('forward_check_interval_minutes', '5')
     ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('forwarding_enabled', 'true')
+    ''')
     forward_interval_minutes_row = cursor.execute(
         "SELECT value FROM settings WHERE key = 'forward_check_interval_minutes'"
     ).fetchone()

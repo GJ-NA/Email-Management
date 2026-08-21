@@ -4,7 +4,6 @@ import importlib
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
 
 
 os.environ.setdefault('SECRET_KEY', 'test-secret-key')

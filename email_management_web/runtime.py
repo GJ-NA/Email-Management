@@ -35,8 +35,16 @@ def load_local_environment() -> None:
     if (os.getenv("EMAIL_MANAGEMENT_SKIP_DOTENV") or "").strip().lower() in {"1", "true", "yes"}:
         return
     configured_path = (os.getenv("EMAIL_MANAGEMENT_ENV_FILE") or "").strip()
-    env_path = Path(configured_path).expanduser() if configured_path else bundle_root() / ".env"
-    if not env_path.is_file():
+    if configured_path:
+        env_paths = [Path(configured_path).expanduser()]
+    else:
+        env_paths = []
+        if is_frozen():
+            env_paths.append(Path(sys.executable).resolve().parent / ".env")
+        env_paths.append(bundle_root() / ".env")
+
+    env_path = next((candidate for candidate in env_paths if candidate.is_file()), None)
+    if env_path is None:
         return
 
     try:
@@ -69,6 +77,10 @@ def runtime_root() -> Path:
     override = os.getenv("EMAIL_MANAGEMENT_HOME") or os.getenv("OUTLOOK_EMAIL_HOME")
     if override:
         root = Path(override).expanduser()
+        if not root.is_absolute():
+            base = Path(sys.executable).resolve().parent if is_frozen() else bundle_root()
+            root = base / root
+        root = root.resolve()
     elif is_frozen():
         if os.name == "nt":
             root = Path(os.getenv("APPDATA", str(Path.home() / "AppData" / "Roaming"))) / APP_NAME

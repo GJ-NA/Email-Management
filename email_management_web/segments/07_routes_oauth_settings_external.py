@@ -619,6 +619,7 @@ def api_get_settings():
     settings['configured_skin_id'] = skin_settings['configured_skin_id']
     settings['active_skin'] = skin_settings['active_skin']
     settings['active_skin_asset_hash'] = skin_settings['asset_hash']
+    settings['forwarding_enabled'] = get_setting('forwarding_enabled', 'true')
     settings['forward_channels'] = get_forward_channels()
     settings['forward_check_interval_minutes'] = get_setting('forward_check_interval_minutes', '5')
     settings['forward_check_interval_seconds'] = str(normalize_forward_check_interval_seconds())
@@ -799,6 +800,16 @@ def api_update_settings():
                 errors.append('更新定时刷新开关失败')
         else:
             errors.append('定时刷新开关必须是 true 或 false')
+
+    if 'forwarding_enabled' in data:
+        forwarding_enabled = str(data['forwarding_enabled']).lower()
+        if forwarding_enabled in ('true', 'false'):
+            if set_setting('forwarding_enabled', forwarding_enabled):
+                updated.append('邮件转发开关')
+            else:
+                errors.append('更新邮件转发开关失败')
+        else:
+            errors.append('邮件转发开关必须是 true 或 false')
 
     if 'app_timezone' in data:
         app_timezone = str(data['app_timezone']).strip()

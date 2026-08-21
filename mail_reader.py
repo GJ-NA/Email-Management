@@ -10,6 +10,7 @@ Email Management读取测试工具
 
 import email
 import imaplib
+import os
 from email.header import decode_header
 from typing import Optional, List, Dict, Any
 

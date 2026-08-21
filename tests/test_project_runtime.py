@@ -1428,7 +1428,7 @@ class ProjectRuntimeTests(unittest.TestCase):
     def test_export_selected_accounts_uses_selected_account_ids(self):
         first_account_id = self._insert_account('first-selected-export@example.com')
         second_account_id = self._insert_account('second-selected-export@example.com')
-        third_account_id = self._insert_account('third-selected-export@example.com')
+        self._insert_account('third-selected-export@example.com')
 
         with self.app.app_context():
             db = email_management.get_db()
@@ -2334,10 +2334,15 @@ class FrontendTimezoneBootstrapTests(unittest.TestCase):
         extension_js = pathlib.Path(ROOT_DIR, 'browser-extension', 'sidepanel.js').read_text(encoding='utf-8')
 
         self.assertIn('id="forwardCheckIntervalSeconds"', settings_html)
+        self.assertIn('id="forwardingEnabled"', settings_html)
         self.assertIn('id="forwardExecutionMode"', settings_html)
         self.assertIn('id="forwardParallelWorkers"', settings_html)
         self.assertIn('syncForwardExecutionModeUI()', settings_html)
         self.assertIn('data.settings.forward_check_interval_seconds', settings_js)
+        self.assertIn('data.settings.forwarding_enabled', settings_js)
+        self.assertIn('settings.forwarding_enabled = forwardingEnabled;', settings_js)
+        self.assertIn('id="settingForwardingEnabled"', extension_js)
+        self.assertIn('forwarding_enabled: checked(\'settingForwardingEnabled\')', extension_js)
         self.assertIn('settings.forward_check_interval_seconds = forwardSeconds;', settings_js)
         self.assertIn('settings.forward_execution_mode = forwardExecutionMode;', settings_js)
         self.assertIn('settings.forward_parallel_workers = forwardParallelWorkers;', settings_js)

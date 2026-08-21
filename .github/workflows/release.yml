@@ -63,7 +63,7 @@ jobs:
 
       - name: Build Windows executable
         shell: bash
-        run: pyinstaller --noconfirm --clean email_management.spec
+        run: pwsh -NoProfile -File scripts/build-windows-exe.ps1
 
       - name: Package release asset
         id: package
@@ -71,7 +71,7 @@ jobs:
         run: |
           $version = "${{ needs.resolve-release.outputs.version }}"
           $assetName = "EmailManagement-windows-x64-$version.zip"
-          Compress-Archive -Path "dist/EmailManagement.exe", "README.md" -DestinationPath $assetName -Force
+          Compress-Archive -Path "EmailManagement.exe", "README.md" -DestinationPath $assetName -Force
           "asset_name=$assetName" >> $env:GITHUB_OUTPUT
 
       - name: Upload packaged executable

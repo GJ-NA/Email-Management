@@ -1161,9 +1161,74 @@
             return enabledChannels;
         }
 
+        function resetAccountTxtFileState() {
+            const fileInput = document.getElementById('accountTxtFile');
+            const fileName = document.getElementById('accountTxtFileName');
+            const clearButton = document.getElementById('accountTxtFileClear');
+            if (fileInput) fileInput.value = '';
+            if (fileName) fileName.textContent = '未选择文件';
+            if (clearButton) clearButton.hidden = true;
+        }
+
+        function decodeAccountTxtFile(arrayBuffer) {
+            const bytes = new Uint8Array(arrayBuffer);
+            let encoding = 'utf-8';
+            if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+                encoding = 'utf-16le';
+            } else if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+                encoding = 'utf-16be';
+            }
+
+            let text = new TextDecoder(encoding).decode(bytes);
+            if (encoding === 'utf-8' && text.includes('\ufffd')) {
+                try {
+                    const gbText = new TextDecoder('gb18030').decode(bytes);
+                    if (!gbText.includes('\ufffd')) text = gbText;
+                } catch (error) {
+                    // Older browsers may not support the GB18030 decoder.
+                }
+            }
+            return text.replace(/^\ufeff/, '');
+        }
+
+        async function handleAccountTxtFileChange(event) {
+            const file = event?.target?.files?.[0];
+            if (!file) return;
+            if (!/\.txt$/i.test(file.name)) {
+                showToast('请选择 TXT 文本文件', 'error');
+                resetAccountTxtFileState();
+                return;
+            }
+
+            try {
+                const text = decodeAccountTxtFile(await file.arrayBuffer());
+                const input = document.getElementById('accountInput');
+                const fileName = document.getElementById('accountTxtFileName');
+                const clearButton = document.getElementById('accountTxtFileClear');
+                if (input) {
+                    input.value = text;
+                    input.focus();
+                }
+                if (fileName) fileName.textContent = file.name;
+                if (clearButton) clearButton.hidden = false;
+                updateImportHint();
+                showToast(`已读取 ${file.name}`, 'success');
+            } catch (error) {
+                resetAccountTxtFileState();
+                showToast('读取 TXT 文件失败', 'error');
+            }
+        }
+
+        function clearAccountTxtFile() {
+            resetAccountTxtFileState();
+            const input = document.getElementById('accountInput');
+            if (input) input.value = '';
+        }
+
         function showAddAccountModal() {
             showModal('addAccountModal');
             document.getElementById('accountInput').value = '';
+            resetAccountTxtFileState();
             if (document.getElementById('importProviderSelect')) {
                 document.getElementById('importProviderSelect').value = 'outlook';
             }
@@ -1802,6 +1867,7 @@
                     document.getElementById('normalMailLocalRetentionEnabled').checked = retentionEnabled;
                     setNormalMailLocalRetentionEnabled(retentionEnabled);
                     const fallbackForwardSeconds = String((parseInt(data.settings.forward_check_interval_minutes || '5', 10) || 5) * 60);
+                    document.getElementById('forwardingEnabled').checked = String(data.settings.forwarding_enabled) !== 'false';
                     document.getElementById('forwardCheckIntervalSeconds').value = data.settings.forward_check_interval_seconds || fallbackForwardSeconds;
                     document.getElementById('forwardExecutionMode').value = data.settings.forward_execution_mode === 'parallel' ? 'parallel' : 'serial';
                     document.getElementById('forwardParallelWorkers').value = data.settings.forward_parallel_workers || '4';
@@ -1896,6 +1962,7 @@
             const days = parseInt(refreshDays, 10);
             const delay = parseInt(refreshDelay, 10);
             const forwardSeconds = parseInt(document.getElementById('forwardCheckIntervalSeconds').value || '300', 10);
+            const forwardingEnabled = !!document.getElementById('forwardingEnabled')?.checked;
             const forwardExecutionMode = document.getElementById('forwardExecutionMode')?.value === 'parallel' ? 'parallel' : 'serial';
             const forwardParallelWorkers = parseInt(document.getElementById('forwardParallelWorkers').value || '4', 10);
             const forwardAccountDelaySeconds = forwardExecutionMode === 'parallel'
@@ -1951,27 +2018,27 @@
                 showToast('转发邮件时间范围必须在 0-10080 分钟之间', 'error');
                 return;
             }
-            if (forwardChannels.includes('smtp') && !smtpRecipient) {
+            if (forwardingEnabled && forwardChannels.includes('smtp') && !smtpRecipient) {
                 showToast('启用 SMTP 转发时必须填写转发到邮箱', 'error');
                 return;
             }
-            if (forwardChannels.includes('smtp') && !smtpHost) {
+            if (forwardingEnabled && forwardChannels.includes('smtp') && !smtpHost) {
                 showToast('启用 SMTP 转发时必须填写 SMTP 主机', 'error');
                 return;
             }
-            if (forwardChannels.includes('smtp') && !smtpUsername && !smtpFromEmail) {
+            if (forwardingEnabled && forwardChannels.includes('smtp') && !smtpUsername && !smtpFromEmail) {
                 showToast('至少需要填写 SMTP 用户名或发件人邮箱之一', 'error');
                 return;
             }
-            if (forwardChannels.includes('smtp') && (Number.isNaN(smtpPort) || smtpPort < 1 || smtpPort > 65535)) {
+            if (forwardingEnabled && forwardChannels.includes('smtp') && (Number.isNaN(smtpPort) || smtpPort < 1 || smtpPort > 65535)) {
                 showToast('SMTP 端口无效', 'error');
                 return;
             }
-            if (forwardChannels.includes('telegram') && !telegramBotToken) {
+            if (forwardingEnabled && forwardChannels.includes('telegram') && !telegramBotToken) {
                 showToast('启用 TG 转发时必须填写 Telegram Bot Token', 'error');
                 return;
             }
-            if (forwardChannels.includes('telegram') && !telegramChatId) {
+            if (forwardingEnabled && forwardChannels.includes('telegram') && !telegramChatId) {
                 showToast('启用 TG 转发时必须填写 Telegram Chat ID', 'error');
                 return;
             }
@@ -1979,7 +2046,7 @@
                 showToast('Telegram Topic ID 必须是纯数字', 'error');
                 return;
             }
-            if (forwardChannels.includes('wecom') && !wecomWebhookUrl) {
+            if (forwardingEnabled && forwardChannels.includes('wecom') && !wecomWebhookUrl) {
                 showToast('启用企业微信转发时必须填写 Webhook 地址', 'error');
                 return;
             }
@@ -2019,6 +2086,7 @@
             settings.show_account_sort_order = showAccountSortOrder;
             settings.show_group_id = showGroupId;
             settings.normal_mail_local_retention_enabled = normalMailLocalRetentionEnabled;
+            settings.forwarding_enabled = forwardingEnabled;
             settings.forward_channels = forwardChannels;
             settings.forward_check_interval_seconds = forwardSeconds;
             settings.forward_check_interval_minutes = Math.max(1, Math.min(60, Math.ceil(forwardSeconds / 60)));

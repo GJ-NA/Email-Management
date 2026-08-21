@@ -3491,6 +3491,28 @@ class AppTimezoneSettingsTests(unittest.TestCase):
         self.assertTrue(payload['success'])
         self.assertEqual(payload['settings']['forward_account_delay_seconds'], '7')
 
+    def test_settings_api_persists_forwarding_enabled(self):
+        response = self.client.put(
+            '/api/settings',
+            json={'forwarding_enabled': False}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+
+        response = self.client.get('/api/settings')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['settings']['forwarding_enabled'], 'false')
+
+        response = self.client.put(
+            '/api/settings',
+            json={'forwarding_enabled': True}
+        )
+        self.assertTrue(response.get_json()['success'])
+
     def test_settings_api_persists_forward_latency_controls(self):
         response = self.client.put(
             '/api/settings',
@@ -3583,6 +3605,7 @@ class MultiChannelForwardingTests(unittest.TestCase):
             db.commit()
 
             self.assertTrue(email_management.set_setting('forward_channels', 'smtp,telegram'))
+            self.assertTrue(email_management.set_setting('forwarding_enabled', 'true'))
             self.assertTrue(email_management.set_setting('forward_execution_mode', 'serial'))
             self.assertTrue(email_management.set_setting('forward_parallel_workers', '4'))
             self.assertTrue(email_management.set_setting('email_forward_recipient', 'main@example.com'))
@@ -3810,6 +3833,36 @@ class MultiChannelForwardingTests(unittest.TestCase):
         self.assertTrue(result['skipped'])
         self.assertEqual(result['reason'], 'already_running')
         candidates_mock.assert_not_called()
+
+    def test_process_forwarding_job_does_not_print_when_no_channel_is_configured(self):
+        with self.app.app_context():
+            self.assertTrue(email_management.set_setting('forward_channels', 'none'))
+
+        with patch.object(email_management, 'safe_console_print') as console_mock, \
+             patch.object(email_management.app.logger, 'debug') as debug_mock:
+            result = email_management.process_forwarding_job()
+
+        self.assertTrue(result['success'])
+        self.assertTrue(result['skipped'])
+        self.assertEqual(result['reason'], 'no_active_channels')
+        console_mock.assert_not_called()
+        debug_mock.assert_called_once_with(
+            '[forward] skip job: no active channels configured'
+        )
+
+    def test_process_forwarding_job_skips_when_forwarding_is_disabled(self):
+        with self.app.app_context():
+            self.assertTrue(email_management.set_setting('forwarding_enabled', 'false'))
+
+        with patch.object(email_management, 'fetch_forward_candidates') as candidates_mock, \
+             patch.object(email_management.app.logger, 'debug') as debug_mock:
+            result = email_management.process_forwarding_job()
+
+        self.assertTrue(result['success'])
+        self.assertTrue(result['skipped'])
+        self.assertEqual(result['reason'], 'forwarding_disabled')
+        candidates_mock.assert_not_called()
+        debug_mock.assert_called_once_with('[forward] skip job: forwarding is disabled')
 
     def test_parallel_forwarding_allows_other_accounts_while_one_is_slow(self):
         with self.app.app_context():
