@@ -160,16 +160,6 @@ def _upsert_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
     )
 
 
-def _get_setting(conn: sqlite3.Connection, key: str) -> Optional[str]:
-    row = conn.execute(
-        "SELECT value FROM settings WHERE key = ?",
-        (key,),
-    ).fetchone()
-    if row is None:
-        return None
-    return row[0]
-
-
 def write_audit_log(conn: sqlite3.Connection, details: str) -> None:
     """写入审计日志；表不存在或失败时静默跳过（与应用 log_audit 一致）。"""
     if not _table_exists(conn, "audit_logs"):

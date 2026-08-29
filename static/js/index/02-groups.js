@@ -10,7 +10,7 @@
         const ACCOUNT_VERIFY_STATUS_FILTER_OPTIONS = [
             { value: 'all', label: '全部状态', tone: 'neutral' },
             { value: 'unknown', label: '未验活', tone: 'muted' },
-            { value: 'imap_ok', label: 'IMAP有效', tone: 'imap' },
+            { value: 'imap_ok', label: 'IMAP/POP3有效', tone: 'imap' },
             { value: 'graph_ok', label: 'Graph有效', tone: 'graph' },
             { value: 'email_ok', label: '邮箱有效', tone: 'both' },
             { value: 'invalid', label: '邮箱失效', tone: 'invalid' },
@@ -1510,6 +1510,13 @@
                 };
             }
 
+            if (status === 'pop3_password_ok') {
+                return {
+                    html: `<span class="account-status-pill success" title="POP3 账号验证成功${timeSuffix}">POP3有效</span>`,
+                    isFailed: false,
+                };
+            }
+
             if (status === 'oauth_failed') {
                 return {
                     html: `<span class="account-status-pill danger" title="无法获取访问令牌，Graph 和 OAuth-IMAP 均无法收件${timeSuffix}${errorSuffix}">邮箱失效</span>`,
@@ -1542,15 +1549,15 @@
                 return !lastVerifyAt || status === 'unknown';
             }
             if (filter === 'imap_ok') {
-                return status === 'imap_ok' || status === 'imap_password_ok';
+                return status === 'imap_ok' || status === 'imap_password_ok' || status === 'pop3_password_ok';
             }
             if (filter === 'graph_ok') {
                 return status === 'graph_ok' || status === 'imap_failed';
             }
             if (filter === 'email_ok') {
-                return ['graph_ok', 'imap_failed', 'imap_ok', 'imap_password_ok', 'both_ok'].includes(status);
+                return ['graph_ok', 'imap_failed', 'imap_ok', 'imap_password_ok', 'pop3_password_ok', 'both_ok'].includes(status);
             }
-            return ['receive_failed', 'oauth_failed', 'imap_password_failed', 'invalid'].includes(status);
+            return ['receive_failed', 'oauth_failed', 'imap_password_failed', 'pop3_password_failed', 'invalid'].includes(status);
         }
 
         function renderAccountVerifyStatus(account) {
@@ -2569,8 +2576,8 @@
             if (protocolGroup) protocolGroup.style.display = !isOutlook && supportsPop3 ? '' : 'none';
             if (protocolHint) {
                 protocolHint.textContent = accountType === 'pop3'
-                    ? '163 POP3 使用客户端授权码，仅支持收件箱。'
-                    : '163 可使用 IMAP 授权码或 POP3 客户端授权码。';
+                    ? '163 POP3 使用客户端授权码，仅支持收件箱；两段导入无需额外填写登录密码。'
+                    : '163 可使用 IMAP 或 POP3 客户端授权码；两段导入无需先判断协议，IMAP 认证失败时会自动尝试 POP3。';
             }
             if (customImapSettings) customImapSettings.style.display = provider === 'custom' ? '' : 'none';
             if (exampleEl) exampleEl.style.display = '';
@@ -2596,15 +2603,17 @@
             }
 
             if (accountType === 'pop3') {
-                hintEl.textContent = '格式：邮箱----POP3客户端授权码，每行一个。163 POP3 仅同步收件箱。';
-                inputEl.placeholder = '邮箱----POP3客户端授权码';
+                hintEl.textContent = '格式：邮箱----POP3客户端授权码----pop3；也兼容邮箱----密码----客户端授权码。163 POP3 仅同步收件箱。';
+                inputEl.placeholder = '邮箱----POP3客户端授权码----pop3';
                 if (exampleEl) {
-                    exampleEl.textContent = '示例：\nuser@163.com----pop3-client-code';
+                    exampleEl.textContent = '示例：\nuser@163.com----pop3-client-code----pop3\nuser@163.com----login-password----pop3-client-code';
                 }
                 return;
             }
 
-            hintEl.textContent = `格式：邮箱----IMAP授权码/应用密码，每行一个。当前类型：${getProviderLabel(provider)}。`;
+            hintEl.textContent = provider === '163'
+                ? '格式：邮箱----客户端授权码/应用密码，每行一个。163 会先尝试 IMAP，认证失败时自动尝试 POP3。'
+                : `格式：邮箱----IMAP授权码/应用密码，每行一个。当前类型：${getProviderLabel(provider)}。`;
             inputEl.placeholder = '邮箱----IMAP授权码/应用密码';
             if (exampleEl) {
                 exampleEl.textContent = '示例：\nuser@gmail.com----app-password\nuser2@qq.com----imap-auth-code';

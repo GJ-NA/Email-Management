@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import ssl
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -1086,8 +1087,7 @@ def get_emails_imap_with_server(account: str, client_id: str, refresh_token: str
 
     connection = None
     try:
-        with proxy_socket_context(proxy_url):
-            connection = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        connection = create_imap_connection(server, IMAP_PORT, proxy_url)
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode('utf-8')
         connection.authenticate('XOAUTH2', lambda x: auth_string)
 
@@ -1184,8 +1184,7 @@ def get_raw_email_imap(account: str, client_id: str, refresh_token: str, message
 
     connection = None
     try:
-        with proxy_socket_context(proxy_url):
-            connection = imaplib.IMAP4_SSL(IMAP_SERVER_NEW, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        connection = create_imap_connection(IMAP_SERVER_NEW, IMAP_PORT, proxy_url)
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode('utf-8')
         connection.authenticate('XOAUTH2', lambda x: auth_string)
 
@@ -1269,8 +1268,7 @@ def _get_email_detail_imap_result_once(account: str, client_id: str, refresh_tok
     access_token = token_result.get('access_token')
     connection = None
     try:
-        with proxy_socket_context(proxy_url):
-            connection = imaplib.IMAP4_SSL(IMAP_SERVER_NEW, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        connection = create_imap_connection(IMAP_SERVER_NEW, IMAP_PORT, proxy_url)
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode('utf-8')
         try:
             connection.authenticate('XOAUTH2', lambda x: auth_string)
@@ -1566,7 +1564,9 @@ def get_raw_email_imap_generic(email_addr: str, imap_password: str, imap_host: s
     connection = None
     try:
         connection = create_imap_connection(imap_host, imap_port, proxy_url)
-        connection.login(email_addr, imap_password)
+        login_imap_with_client_identity(
+            connection, email_addr, imap_password, provider, imap_host
+        )
         selected_folder, _folder_diagnostics = resolve_imap_folder(connection, provider, folder, readonly=True)
         if not selected_folder:
             return None
@@ -1588,6 +1588,14 @@ def get_raw_email_imap_generic(email_addr: str, imap_password: str, imap_host: s
                 connection.logout()
             except Exception:
                 pass
+
+
+def create_mail_ssl_context():
+    """创建与常见移动端邮件客户端一致的免证书校验 TLS 上下文。"""
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
 
 
 def build_email_detail_from_message(msg, message_id: str, date_value: str = '') -> Dict[str, Any]:
@@ -1614,15 +1622,21 @@ def create_imap_connection(imap_host: str, imap_port: int = 993, proxy_url: str 
     port = int(imap_port or 993)
     if not host:
         raise ValueError('IMAP host 不能为空')
+    ssl_context = create_mail_ssl_context()
     try:
         with proxy_socket_context(proxy_url):
-            return imaplib.IMAP4_SSL(host, port, timeout=IMAP_TIMEOUT)
+            return imaplib.IMAP4_SSL(
+                host,
+                port,
+                timeout=IMAP_TIMEOUT,
+                ssl_context=ssl_context,
+            )
     except TypeError:
         old_timeout = socket.getdefaulttimeout()
         socket.setdefaulttimeout(IMAP_TIMEOUT)
         try:
             with proxy_socket_context(proxy_url):
-                return imaplib.IMAP4_SSL(host, port)
+                return imaplib.IMAP4_SSL(host, port, ssl_context=ssl_context)
         finally:
             socket.setdefaulttimeout(old_timeout)
 
@@ -1632,15 +1646,21 @@ def create_pop3_connection(pop3_host: str, pop3_port: int = 995, proxy_url: str 
     port = int(pop3_port or 995)
     if not host:
         raise ValueError('POP3 host 不能为空')
+    ssl_context = create_mail_ssl_context()
     try:
         with proxy_socket_context(proxy_url):
-            return poplib.POP3_SSL(host, port, timeout=IMAP_TIMEOUT)
+            return poplib.POP3_SSL(
+                host,
+                port,
+                timeout=IMAP_TIMEOUT,
+                context=ssl_context,
+            )
     except TypeError:
         old_timeout = socket.getdefaulttimeout()
         socket.setdefaulttimeout(IMAP_TIMEOUT)
         try:
             with proxy_socket_context(proxy_url):
-                return poplib.POP3_SSL(host, port)
+                return poplib.POP3_SSL(host, port, context=ssl_context)
         finally:
             socket.setdefaulttimeout(old_timeout)
 
@@ -2176,6 +2196,10 @@ def send_imap_id(mail, provider: str, imap_host: str) -> Dict[str, Any]:
         return {'attempted': False, 'reason': 'xatom_not_supported'}
 
     try:
+        current_state = getattr(mail, 'state', '')
+        command_states = tuple(imaplib.Commands.get('ID', ()))
+        if current_state and current_state not in command_states:
+            imaplib.Commands['ID'] = (*command_states, current_state)
         status, response = mail.xatom('ID', payload)
         return {
             'attempted': True,
@@ -2194,6 +2218,13 @@ def send_imap_id(mail, provider: str, imap_host: str) -> Dict[str, Any]:
             'provider': provider,
             'imap_host': imap_host,
         }
+
+
+def login_imap_with_client_identity(mail, email_addr: str, imap_password: str,
+                                    provider: str = 'custom', imap_host: str = '') -> Dict[str, Any]:
+    """完成密码登录后发送 IMAP ID，再由调用方选择邮箱文件夹。"""
+    mail.login(email_addr, imap_password)
+    return send_imap_id(mail, provider, imap_host)
 
 
 def build_imap_select_variants(folder_name: str) -> List[str]:
@@ -2633,8 +2664,7 @@ def mark_emails_read_imap_batch(email_addr: str, client_id: str, refresh_token: 
 
     connection = None
     try:
-        with proxy_socket_context(proxy_url):
-            connection = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        connection = create_imap_connection(server, IMAP_PORT, proxy_url)
         auth_string = f"user={email_addr}\1auth=Bearer {access_token}\1\1".encode('utf-8')
         connection.authenticate('XOAUTH2', lambda x: auth_string)
         return mark_email_items_seen_imap(connection, items, 'outlook', default_mode='sequence')
@@ -2661,7 +2691,9 @@ def mark_emails_read_imap_generic_result(email_addr: str, imap_password: str, im
     try:
         mail = create_imap_connection(imap_host, imap_port, proxy_url)
         try:
-            mail.login(email_addr, imap_password)
+            login_imap_with_client_identity(
+                mail, email_addr, imap_password, provider, imap_host
+            )
         except imaplib.IMAP4.error as exc:
             return {
                 'success': False,
@@ -2676,8 +2708,6 @@ def mark_emails_read_imap_generic_result(email_addr: str, imap_password: str, im
                     ''
                 )],
             }
-
-        send_imap_id(mail, provider, imap_host)
         return mark_email_items_seen_imap(mail, items, provider, default_mode='uid')
     except Exception as exc:
         return {
@@ -2825,8 +2855,7 @@ def delete_emails_imap_batch(email_addr: str, client_id: str, refresh_token: str
 
     connection = None
     try:
-        with proxy_socket_context(proxy_url):
-            connection = imaplib.IMAP4_SSL(server, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        connection = create_imap_connection(server, IMAP_PORT, proxy_url)
         auth_string = f"user={email_addr}\1auth=Bearer {access_token}\1\1".encode('utf-8')
         connection.authenticate('XOAUTH2', lambda x: auth_string)
         return delete_email_items_imap(connection, items, 'outlook', default_mode='sequence')
@@ -2854,7 +2883,9 @@ def delete_emails_imap_generic_result(email_addr: str, imap_password: str, imap_
     try:
         mail = create_imap_connection(imap_host, imap_port, proxy_url)
         try:
-            mail.login(email_addr, imap_password)
+            login_imap_with_client_identity(
+                mail, email_addr, imap_password, provider, imap_host
+            )
         except imaplib.IMAP4.error as exc:
             return {
                 'success': False,
@@ -2870,8 +2901,6 @@ def delete_emails_imap_generic_result(email_addr: str, imap_password: str, imap_
                     ''
                 )],
             }
-
-        send_imap_id(mail, provider, imap_host)
         return delete_email_items_imap(mail, items, provider, default_mode='uid')
     except Exception as exc:
         return {
@@ -2901,7 +2930,9 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
         top = max(1, int(top or 20))
         mail = create_imap_connection(imap_host, imap_port, proxy_url)
         try:
-            mail.login(email_addr, imap_password)
+            imap_id_info = login_imap_with_client_identity(
+                mail, email_addr, imap_password, provider, imap_host
+            )
         except imaplib.IMAP4.error as exc:
             return {
                 'success': False,
@@ -2914,8 +2945,6 @@ def get_emails_imap_generic(email_addr: str, imap_password: str, imap_host: str,
                 ),
                 'error_code': 'IMAP_AUTH_FAILED'
             }
-
-        imap_id_info = send_imap_id(mail, provider, imap_host)
         selected, folder_diagnostics = resolve_imap_folder(mail, provider, folder, readonly=True)
         if not selected:
             if imap_id_info:
@@ -3050,7 +3079,9 @@ def get_email_detail_imap_generic_result(email_addr: str, imap_password: str, im
     try:
         mail = create_imap_connection(imap_host, imap_port, proxy_url)
         try:
-            mail.login(email_addr, imap_password)
+            imap_id_info = login_imap_with_client_identity(
+                mail, email_addr, imap_password, provider, imap_host
+            )
         except imaplib.IMAP4.error as exc:
             return {
                 'success': False,
@@ -3062,8 +3093,6 @@ def get_email_detail_imap_generic_result(email_addr: str, imap_password: str, im
                     ''
                 )
             }
-
-        imap_id_info = send_imap_id(mail, provider, imap_host)
         selected, folder_diagnostics = resolve_imap_folder(mail, provider, folder, readonly=True)
         if not selected:
             if imap_id_info:
@@ -3167,8 +3196,7 @@ def download_email_attachment_imap_result(account: str, client_id: str, refresh_
 
     connection = None
     try:
-        with proxy_socket_context(proxy_url):
-            connection = imaplib.IMAP4_SSL(IMAP_SERVER_NEW, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        connection = create_imap_connection(IMAP_SERVER_NEW, IMAP_PORT, proxy_url)
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode('utf-8')
         connection.authenticate('XOAUTH2', lambda x: auth_string)
 
@@ -3269,7 +3297,9 @@ def download_email_attachment_imap_generic_result(email_addr: str, imap_password
     try:
         mail = create_imap_connection(imap_host, imap_port, proxy_url)
         try:
-            mail.login(email_addr, imap_password)
+            login_imap_with_client_identity(
+                mail, email_addr, imap_password, provider, imap_host
+            )
         except imaplib.IMAP4.error as exc:
             return {
                 'success': False,
@@ -3281,8 +3311,6 @@ def download_email_attachment_imap_generic_result(email_addr: str, imap_password
                     ''
                 )
             }
-
-        send_imap_id(mail, provider, imap_host)
         selected, folder_diagnostics = resolve_imap_folder(mail, provider, folder, readonly=True)
         if not selected:
             blocked_error = get_imap_access_block_error(provider, folder, folder_diagnostics)

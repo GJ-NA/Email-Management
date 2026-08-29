@@ -74,10 +74,6 @@
     return Number.isFinite(parentId) && parentId > 0 ? parentId : null;
   }
 
-  function isSystemGroup(group) {
-    return !!(group && (group.is_system === 1 || group.name === '临时邮箱'));
-  }
-
   function sortGroupsForTree(left, right) {
     if (left.name === '临时邮箱' && right.name !== '临时邮箱') return -1;
     if (right.name === '临时邮箱' && left.name !== '临时邮箱') return 1;

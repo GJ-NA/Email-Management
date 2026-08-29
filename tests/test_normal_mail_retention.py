@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 
 os.environ.setdefault('SECRET_KEY', 'test-secret-key')
@@ -729,6 +729,7 @@ class NormalMailRetentionTests(unittest.TestCase):
             'imap.example.com',
             email_management.IMAP_PORT,
             timeout=email_management.IMAP_TIMEOUT,
+            ssl_context=ANY,
         )
         connection.authenticate.assert_called_once()
         resolve_folder_mock.assert_called_once()

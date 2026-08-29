@@ -24,11 +24,14 @@ class FakeMail:
         self.select_calls = []
         self.logged_out = False
         self.xatom_calls = []
+        self.command_events = []
 
     def login(self, *_args, **_kwargs):
+        self.command_events.append('login')
         return 'OK', [b'logged in']
 
     def xatom(self, name, *args):
+        self.command_events.append('xatom')
         self.xatom_calls.append((name, args))
         return 'OK', [b'ID completed']
 
@@ -58,6 +61,47 @@ class FakeMail:
 
 
 class ImapFolderResolutionTests(unittest.TestCase):
+    def test_163_imap_id_is_sent_after_login(self):
+        mail = FakeMail()
+
+        result = email_management.login_imap_with_client_identity(
+            mail,
+            'user@163.com',
+            'client-auth-code',
+            provider='163',
+            imap_host='imap.163.com',
+        )
+
+        self.assertEqual(result['status'], 'OK')
+        self.assertEqual(mail.command_events, ['login', 'xatom'])
+
+    def test_imap_connections_accept_all_server_certificates(self):
+        with patch.object(
+            email_management.imaplib,
+            'IMAP4_SSL',
+            return_value=object(),
+        ) as imap_factory:
+            email_management.create_imap_connection('imap.example.com', 993)
+
+        imap_factory.assert_called_once()
+        ssl_context = imap_factory.call_args.kwargs['ssl_context']
+        self.assertFalse(ssl_context.check_hostname)
+        self.assertEqual(ssl_context.verify_mode, email_management.ssl.CERT_NONE)
+
+    def test_custom_imap_id_stays_after_login(self):
+        mail = FakeMail()
+
+        result = email_management.login_imap_with_client_identity(
+            mail,
+            'user@example.com',
+            'imap-password',
+            provider='custom',
+            imap_host='imap.example.com',
+        )
+
+        self.assertEqual(result['status'], 'OK')
+        self.assertEqual(mail.command_events, ['login', 'xatom'])
+
     def test_2925_domain_maps_to_builtin_provider(self):
         meta = email_management.get_provider_meta('custom', 'user@2925.com')
 

@@ -1,4 +1,3 @@
-import email
 import importlib
 import os
 import poplib
@@ -99,6 +98,19 @@ def build_message(subject='POP3 subject', body='POP3 body', attachment=False):
 
 
 class Pop3SupportTests(unittest.TestCase):
+    def test_pop3_connections_accept_all_server_certificates(self):
+        with patch.object(
+            email_management.poplib,
+            'POP3_SSL',
+            return_value=object(),
+        ) as pop3_factory:
+            email_management.create_pop3_connection('pop.example.com', 995)
+
+        pop3_factory.assert_called_once()
+        ssl_context = pop3_factory.call_args.kwargs['context']
+        self.assertFalse(ssl_context.check_hostname)
+        self.assertEqual(ssl_context.verify_mode, email_management.ssl.CERT_NONE)
+
     def test_163_pop3_provider_uses_host_and_port_995(self):
         connection = email_management.get_provider_connection_meta(
             '163', 'user@163.com', 'pop3'
@@ -115,6 +127,87 @@ class Pop3SupportTests(unittest.TestCase):
         )
         self.assertEqual(values[8:12], ('pop3', '163', 'pop.163.com', 995))
         self.assertEqual(email_management.decrypt_data(values[12]), 'client-auth-code')
+
+    def test_163_import_uses_third_field_as_pop3_authorization_code(self):
+        parsed = email_management.parse_account_import(
+            'user@163.com----login-password----client-auth-code',
+            provider='163',
+            account_type='imap',
+        )
+
+        self.assertEqual(parsed['account_type'], 'pop3')
+        self.assertEqual(parsed['provider'], '163')
+        self.assertEqual(parsed['imap_host'], 'pop.163.com')
+        self.assertEqual(parsed['imap_port'], 995)
+        self.assertEqual(parsed['imap_password'], 'client-auth-code')
+
+    def test_two_field_163_import_keeps_code_for_protocol_detection(self):
+        parsed = email_management.parse_account_import(
+            'user@163.com----client-auth-code',
+            provider='163',
+            account_type='imap',
+        )
+
+        self.assertEqual(parsed['account_type'], 'imap')
+        self.assertEqual(parsed['imap_host'], 'imap.163.com')
+        self.assertEqual(parsed['imap_port'], 993)
+        self.assertEqual(parsed['imap_password'], 'client-auth-code')
+
+    def test_163_imap_auth_failure_falls_back_to_pop3(self):
+        account = {
+            'email': 'user@163.com',
+            'password': '',
+            'account_type': 'imap',
+            'provider': '163',
+            'imap_host': 'imap.163.com',
+            'imap_port': 993,
+            'imap_password': 'client-auth-code',
+        }
+        imap_result = {
+            'success': False,
+            'error_code': 'IMAP_AUTH_FAILED',
+            'error': {'code': 'IMAP_AUTH_FAILED', 'message': 'IMAP authentication failed'},
+        }
+        pop3_result = {
+            'success': True,
+            'emails': [{'id': 'uid-1', 'folder': 'inbox'}],
+            'method': 'POP3',
+            'has_more': False,
+        }
+
+        with patch.object(email_management, 'get_emails_imap_generic', return_value=imap_result) as imap_mock, \
+             patch.object(email_management, 'get_emails_pop3', return_value=pop3_result) as pop3_mock:
+            result = email_management.fetch_account_folder_emails(
+                account, 'inbox', 0, 20, '', []
+            )
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['request_method'], 'pop3')
+        self.assertEqual(result['detected_account_type'], 'pop3')
+        self.assertEqual(result['detected_imap_host'], 'pop.163.com')
+        self.assertEqual(result['detected_imap_port'], 995)
+        imap_mock.assert_called_once_with(
+            'user@163.com',
+            'client-auth-code',
+            'imap.163.com',
+            993,
+            'inbox',
+            '163',
+            0,
+            20,
+            '',
+        )
+        pop3_mock.assert_called_once_with(
+            'user@163.com',
+            'client-auth-code',
+            'pop.163.com',
+            995,
+            folder='inbox',
+            provider='163',
+            skip=0,
+            top=20,
+            proxy_url='',
+        )
 
     def test_pop3_login_uses_email_and_client_authorization_code(self):
         mail = FakePop3({1: build_message()})

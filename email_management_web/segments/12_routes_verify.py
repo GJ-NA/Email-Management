@@ -189,6 +189,29 @@ def verify_one_account(account: Dict[str, Any], probe_imap: bool) -> Dict[str, A
             result['verify_status'] = 'pop3_password_ok' if account_type == 'pop3' else 'imap_password_ok'
             result['verify_imap_status'] = 'ok'
         else:
+            if (
+                account_type == 'imap'
+                and normalize_provider(account.get('provider'), email) == '163'
+                and is_imap_auth_failure_result(imap_result)
+            ):
+                pop3_result = try_163_pop3_fallback(
+                    account,
+                    imap_password_value,
+                    skip=0,
+                    top=1,
+                    proxy_url=proxy_url,
+                )
+                if pop3_result and pop3_result.get('success'):
+                    detected = mark_163_pop3_detected(pop3_result, account)
+                    result['verify_status'] = 'pop3_password_ok'
+                    result['verify_imap_status'] = 'ok'
+                    result['error'] = ''
+                    result['detected_account_type'] = detected['detected_account_type']
+                    result['detected_provider'] = detected['detected_provider']
+                    result['detected_imap_host'] = detected['detected_imap_host']
+                    result['detected_imap_port'] = detected['detected_imap_port']
+                    return finalize_verify_result(result, started)
+
             result['verify_status'] = 'pop3_password_failed' if account_type == 'pop3' else 'imap_password_failed'
             result['verify_imap_status'] = 'failed'
             fallback_message = 'POP3 验证失败' if account_type == 'pop3' else 'IMAP 验证失败'
@@ -278,6 +301,22 @@ def persist_verify_result(conn: sqlite3.Connection, result: Dict[str, Any]) -> N
     rotated = str(result.get('rotated_refresh_token') or '').strip()
     if rotated:
         persist_rotated_refresh_token(int(result['id']), rotated, db_conn=conn)
+    if result.get('detected_account_type') == 'pop3':
+        conn.execute(
+            '''
+            UPDATE accounts
+            SET account_type = ?, provider = ?, imap_host = ?, imap_port = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            ''',
+            (
+                'pop3',
+                str(result.get('detected_provider') or '163').strip().lower(),
+                str(result.get('detected_imap_host') or 'pop.163.com').strip(),
+                int(result.get('detected_imap_port') or 995),
+                int(result['id']),
+            ),
+        )
     authorizationtype = normalize_account_authorization_type(result.get('authorizationtype'))
     if authorizationtype:
         conn.execute(

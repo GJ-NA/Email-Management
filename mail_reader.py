@@ -11,6 +11,7 @@ Email Management读取测试工具
 import email
 import imaplib
 import os
+import ssl
 from email.header import decode_header
 from typing import Optional, List, Dict, Any
 
@@ -40,6 +41,14 @@ IMAP_SERVER_OLD = "outlook.office365.com"
 IMAP_SERVER_NEW = "outlook.live.com"
 IMAP_PORT = 993
 IMAP_TIMEOUT = int(os.getenv("IMAP_TIMEOUT", "45"))
+
+
+def create_unverified_ssl_context():
+    """与移动端邮件客户端一致，建立不校验证书的 TLS 上下文。"""
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
 
 
 def print_separator(title: str):
@@ -152,7 +161,12 @@ def read_emails_imap_old(account: str, client_id: str, refresh_token: str, top: 
     connection = None
     try:
         print(f"  📡 正在连接 IMAP 服务器: {IMAP_SERVER_OLD}...")
-        connection = imaplib.IMAP4_SSL(IMAP_SERVER_OLD, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        connection = imaplib.IMAP4_SSL(
+            IMAP_SERVER_OLD,
+            IMAP_PORT,
+            timeout=IMAP_TIMEOUT,
+            ssl_context=create_unverified_ssl_context(),
+        )
 
         # 3. XOAUTH2 认证
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1"
@@ -258,7 +272,12 @@ def read_emails_imap_new(account: str, client_id: str, refresh_token: str, top: 
     connection = None
     try:
         print(f"  📡 正在连接 IMAP 服务器: {IMAP_SERVER_NEW}...")
-        connection = imaplib.IMAP4_SSL(IMAP_SERVER_NEW, IMAP_PORT, timeout=IMAP_TIMEOUT)
+        connection = imaplib.IMAP4_SSL(
+            IMAP_SERVER_NEW,
+            IMAP_PORT,
+            timeout=IMAP_TIMEOUT,
+            ssl_context=create_unverified_ssl_context(),
+        )
 
         # 3. XOAUTH2 认证
         auth_string = f"user={account}\1auth=Bearer {access_token}\1\1".encode('utf-8')

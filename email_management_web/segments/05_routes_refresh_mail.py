@@ -3878,6 +3878,112 @@ def merge_folder_results(results: Dict[str, Dict[str, Any]], skip: int, top: int
     return response
 
 
+def is_imap_auth_failure_result(result: Dict[str, Any]) -> bool:
+    """Return whether an IMAP result failed specifically during authentication."""
+    if not isinstance(result, dict):
+        return False
+    if str(result.get('error_code') or '').strip().upper() == 'IMAP_AUTH_FAILED':
+        return True
+    error = result.get('error')
+    return isinstance(error, dict) and str(error.get('code') or '').strip().upper() == 'IMAP_AUTH_FAILED'
+
+
+def try_163_pop3_fallback(account: Dict[str, Any], password: str, skip: int = 0,
+                          top: int = 20, proxy_url: str = '') -> Optional[Dict[str, Any]]:
+    """Try 163 POP3 with the same client authorization code after IMAP auth fails."""
+    email_addr = str(account.get('email') or '').strip()
+    provider = normalize_provider(account.get('provider'), email_addr)
+    if provider != '163' or not email_addr or not password:
+        return None
+
+    connection_meta = get_provider_connection_meta(provider, email_addr, 'pop3')
+    pop3_host = str(connection_meta.get('host') or '').strip()
+    pop3_port = int(connection_meta.get('port') or 995)
+    if not pop3_host:
+        return None
+
+    return get_emails_pop3(
+        email_addr,
+        password,
+        pop3_host,
+        pop3_port,
+        folder='inbox',
+        provider=provider,
+        skip=skip,
+        top=top,
+        proxy_url=proxy_url,
+    )
+
+
+def mark_163_pop3_detected(result: Dict[str, Any], account: Dict[str, Any]) -> Dict[str, Any]:
+    """Attach enough metadata for the caller to persist a successful POP3 detection."""
+    detected = dict(result)
+    connection_meta = get_provider_connection_meta('163', account.get('email', ''), 'pop3')
+    detected['detected_account_type'] = 'pop3'
+    detected['detected_provider'] = '163'
+    detected['detected_imap_host'] = connection_meta.get('host', 'pop.163.com')
+    detected['detected_imap_port'] = int(connection_meta.get('port', 995) or 995)
+    detected['method'] = 'POP3 (自动探测)'
+    detected['request_method'] = 'pop3'
+    return detected
+
+
+def persist_detected_mail_protocol(account: Dict[str, Any], result: Dict[str, Any]) -> bool:
+    """Persist a protocol discovered while fetching mail, then update the request copy."""
+    if not isinstance(result, dict) or result.get('detected_account_type') != 'pop3':
+        return False
+
+    account_type = 'pop3'
+    provider = str(result.get('detected_provider') or '163').strip().lower()
+    imap_host = str(result.get('detected_imap_host') or 'pop.163.com').strip()
+    try:
+        imap_port = int(result.get('detected_imap_port') or 995)
+    except (TypeError, ValueError):
+        imap_port = 995
+
+    account.update({
+        'account_type': account_type,
+        'provider': provider,
+        'imap_host': imap_host,
+        'imap_port': imap_port,
+    })
+    account_id = int(account.get('id') or 0)
+    if not account_id:
+        return False
+
+    owned_db = False
+    try:
+        try:
+            db = get_db()
+        except RuntimeError:
+            # Scheduler/worker calls may not have a Flask app context.
+            db = sqlite3.connect(DATABASE, timeout=30)
+            owned_db = True
+        db.execute(
+            '''
+            UPDATE accounts
+            SET account_type = ?, provider = ?, imap_host = ?, imap_port = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            ''',
+            (account_type, provider, imap_host, imap_port, account_id),
+        )
+        db.commit()
+        return True
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        if owned_db:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+
 def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int, top: int,
                                 proxy_url: str = '', fallback_proxy_urls: List[str] = None) -> Dict[str, Any]:
     folder_name = normalize_folder_name(folder)
@@ -3936,6 +4042,33 @@ def fetch_account_folder_emails(account: Dict[str, Any], folder: str, skip: int,
                 'has_more': bool(result.get('has_more')),
                 'request_method': 'imap',
             }
+
+        if (
+            folder_name == 'inbox'
+            and normalize_provider(account.get('provider'), account.get('email', '')) == '163'
+            and is_imap_auth_failure_result(result)
+        ):
+            pop3_result = try_163_pop3_fallback(
+                account,
+                str(account.get('imap_password') or account.get('password') or ''),
+                skip,
+                top,
+                proxy_url,
+            )
+            if pop3_result and pop3_result.get('success'):
+                detected = mark_163_pop3_detected(pop3_result, account)
+                detected['emails'] = format_email_items(pop3_result.get('emails', []), 'inbox')
+                return detected
+
+            details = {'imap_generic': result.get('error')}
+            if pop3_result:
+                details['pop3'] = pop3_result.get('error')
+            return {
+                'success': False,
+                'error': result.get('error', '获取邮件失败'),
+                'details': details,
+            }
+
         return {
             'success': False,
             'error': result.get('error', '获取邮件失败'),
@@ -4104,13 +4237,23 @@ def fetch_account_emails(account: Dict[str, Any], folder: str, skip: int, top: i
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
 
-        return merge_folder_results(
-            results,
-            0,
-            merged_top
+        detected_result = next(
+            (
+                folder_result
+                for folder_result in results.values()
+                if folder_result.get('detected_account_type') == 'pop3'
+            ),
+            None,
         )
+        if detected_result:
+            persist_detected_mail_protocol(account, detected_result)
+            return merge_folder_results({'inbox': detected_result}, 0, merged_top)
 
-    return fetch_account_folder_emails(account, folder_name, skip, top, proxy_url, fallback_proxy_urls)
+        return merge_folder_results(results, 0, merged_top)
+
+    result = fetch_account_folder_emails(account, folder_name, skip, top, proxy_url, fallback_proxy_urls)
+    persist_detected_mail_protocol(account, result)
+    return result
 
 
 @app.route('/api/emails/<email_addr>')

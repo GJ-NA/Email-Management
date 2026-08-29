@@ -845,17 +845,6 @@ def get_provider_connection_meta(provider: str, email_addr: str = '', account_ty
     }
 
 
-def account_uses_pop3(account: Any) -> bool:
-    if isinstance(account, dict):
-        value = account.get('account_type')
-    else:
-        try:
-            value = account['account_type']
-        except (KeyError, IndexError, TypeError, AttributeError):
-            value = ''
-    return normalize_mail_account_type(value) == 'pop3'
-
-
 def get_imap_folder_candidates(provider: str, folder: str) -> List[str]:
     provider_key = (provider or '').strip().lower() or '_default'
     folder_key = (folder or 'inbox').strip().lower()

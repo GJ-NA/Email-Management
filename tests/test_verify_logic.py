@@ -53,6 +53,56 @@ class VerifyLogicTests(unittest.TestCase):
             proxy_url='',
         )
 
+    def test_163_imap_verify_falls_back_to_pop3(self):
+        account = {
+            'id': 8,
+            'email': 'user@163.com',
+            'password': '',
+            'client_id': '',
+            'refresh_token': '',
+            'account_type': 'imap',
+            'provider': '163',
+            'imap_host': 'imap.163.com',
+            'imap_port': 993,
+            'imap_password': 'client-auth-code',
+            'proxy_url': '',
+            'fallback_proxy_url_1': '',
+            'fallback_proxy_url_2': '',
+        }
+
+        with patch.object(email_management, 'decrypt_data', side_effect=lambda value: value), \
+             patch.object(
+                 email_management,
+                 'get_emails_imap_generic',
+                 return_value={
+                     'success': False,
+                     'error_code': 'IMAP_AUTH_FAILED',
+                     'error': {'code': 'IMAP_AUTH_FAILED', 'message': 'IMAP authentication failed'},
+                 },
+             ), patch.object(
+                 email_management,
+                 'get_emails_pop3',
+                 return_value={'success': True, 'emails': [], 'method': 'POP3'},
+             ) as pop3_mock:
+            result = email_management.verify_one_account(account, probe_imap=True)
+
+        self.assertEqual(result['verify_status'], 'pop3_password_ok')
+        self.assertEqual(result['verify_imap_status'], 'ok')
+        self.assertEqual(result['detected_account_type'], 'pop3')
+        self.assertEqual(result['detected_imap_host'], 'pop.163.com')
+        self.assertEqual(result['detected_imap_port'], 995)
+        pop3_mock.assert_called_once_with(
+            'user@163.com',
+            'client-auth-code',
+            'pop.163.com',
+            995,
+            folder='inbox',
+            provider='163',
+            skip=0,
+            top=1,
+            proxy_url='',
+        )
+
     def test_verify_concurrency_is_bounded_when_environment_is_invalid(self):
         with patch.dict(os.environ, {'VERIFY_CONCURRENCY': 'not-a-number'}, clear=False):
             self.assertEqual(email_management.get_verify_max_workers(), 8)

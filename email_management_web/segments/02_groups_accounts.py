@@ -3805,13 +3805,19 @@ def parse_imap_account_string(account_str: str, provider: str = 'custom', imap_h
         return None
 
     email_addr = parts[0]
-    password = parts[1]
+    imap_password = parts[1]
     provider_meta = get_provider_meta(provider, email_addr)
     provider_key = provider_meta['key']
     normalized_account_type = normalize_mail_account_type(account_type, provider_key, email_addr)
 
-    if len(parts) >= 3 and parts[2].strip().lower() in {'imap', 'pop3'}:
-        normalized_account_type = normalize_mail_account_type(parts[2], provider_key, email_addr)
+    if len(parts) >= 3:
+        protocol_part = parts[2].strip().lower()
+        if protocol_part in {'imap', 'pop3'}:
+            normalized_account_type = normalize_mail_account_type(protocol_part, provider_key, email_addr)
+        elif provider_key == '163' and protocol_part:
+            # 兼容手机或第三方客户端常见格式：邮箱----密码----客户端授权码。
+            normalized_account_type = 'pop3'
+            imap_password = parts[2].strip()
 
     if provider_key == 'custom':
         if len(parts) >= 4:
@@ -3829,7 +3835,7 @@ def parse_imap_account_string(account_str: str, provider: str = 'custom', imap_h
         imap_host = connection_meta.get('host', '')
         imap_port = int(connection_meta.get('port', 993) or 993)
 
-    if not password or not imap_host:
+    if not imap_password or not imap_host:
         return None
 
     return {
@@ -3841,7 +3847,7 @@ def parse_imap_account_string(account_str: str, provider: str = 'custom', imap_h
         'account_type': normalized_account_type,
         'imap_host': imap_host,
         'imap_port': int(imap_port or 993),
-        'imap_password': password,
+        'imap_password': imap_password,
     }
 
 

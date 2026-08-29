@@ -840,7 +840,7 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 - Outlook 反序: 每行 `邮箱----密码----RefreshToken----ClientID`，并设置 `account_format=refresh_token_client_id`
 - 非 Outlook IMAP: 每行 `邮箱----IMAP密码`
 - 自定义 IMAP: 每行 `邮箱----IMAP密码----IMAP主机----IMAP端口`
-- 163 POP3: 每行 `邮箱----客户端授权码----pop3`，使用 `pop.163.com:995`
+- 163 两段格式 `邮箱----客户端授权码` 会先按 IMAP 尝试，IMAP 认证失败时自动回退到 POP3；也支持显式 `邮箱----客户端授权码----pop3` 和兼容格式 `邮箱----密码----客户端授权码`，POP3 使用 `pop.163.com:995`
 
 163 POP3 的客户端授权码复用 `imap_password` 字段保存，服务端会按账号敏感信息加密存储。POP3 账号只支持收件箱；邮件列表返回的 `id_mode` 为 `uidl`，服务器不支持 UIDL 时退回 `number`。
 
