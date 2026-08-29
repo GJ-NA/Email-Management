@@ -1627,6 +1627,531 @@ def create_imap_connection(imap_host: str, imap_port: int = 993, proxy_url: str 
             socket.setdefaulttimeout(old_timeout)
 
 
+def create_pop3_connection(pop3_host: str, pop3_port: int = 995, proxy_url: str = ''):
+    host = (pop3_host or '').strip()
+    port = int(pop3_port or 995)
+    if not host:
+        raise ValueError('POP3 host 不能为空')
+    try:
+        with proxy_socket_context(proxy_url):
+            return poplib.POP3_SSL(host, port, timeout=IMAP_TIMEOUT)
+    except TypeError:
+        old_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(IMAP_TIMEOUT)
+        try:
+            with proxy_socket_context(proxy_url):
+                return poplib.POP3_SSL(host, port)
+        finally:
+            socket.setdefaulttimeout(old_timeout)
+
+
+def pop3_response_text(response: Any) -> str:
+    if isinstance(response, (bytes, bytearray, memoryview)):
+        return bytes(response).decode('utf-8', errors='replace')
+    return str(response or '')
+
+
+def pop3_long_response_lines(response: Any) -> List[Any]:
+    if isinstance(response, tuple):
+        for item in response:
+            if isinstance(item, (list, tuple)):
+                return list(item)
+        return []
+    if isinstance(response, (list, tuple)):
+        return list(response)
+    return []
+
+
+def parse_pop3_numbered_lines(lines: Any) -> List[tuple[int, List[str]]]:
+    parsed: List[tuple[int, List[str]]] = []
+    for line in lines or []:
+        parts = pop3_response_text(line).strip().split()
+        if not parts or not parts[0].isdigit():
+            continue
+        parsed.append((int(parts[0]), parts[1:]))
+    return parsed
+
+
+def list_pop3_message_refs(mail) -> List[Dict[str, Any]]:
+    """返回 POP3 邮件编号和 UIDL；UIDL 不可用时退回服务器邮件编号。"""
+    uidl_by_number: Dict[int, str] = {}
+    try:
+        uidl_response = mail.uidl()
+        for number, values in parse_pop3_numbered_lines(pop3_long_response_lines(uidl_response)):
+            if values:
+                uidl_by_number[number] = values[0]
+    except Exception:
+        uidl_by_number = {}
+
+    numbers = set(uidl_by_number)
+    if not numbers:
+        list_response = mail.list()
+        numbers = {number for number, _values in parse_pop3_numbered_lines(
+            pop3_long_response_lines(list_response)
+        )}
+
+    return [
+        {
+            'number': number,
+            'id': uidl_by_number.get(number, str(number)),
+            'id_mode': 'uidl' if number in uidl_by_number else 'number',
+        }
+        for number in sorted(numbers)
+    ]
+
+
+def resolve_pop3_message_ref(mail, message_id: str) -> Optional[Dict[str, Any]]:
+    requested_id = str(message_id or '').strip()
+    if not requested_id:
+        return None
+    refs = list_pop3_message_refs(mail)
+    for ref in refs:
+        if requested_id == str(ref.get('id') or ''):
+            return ref
+    if requested_id.isdigit():
+        requested_number = int(requested_id)
+        for ref in refs:
+            if int(ref.get('number') or 0) == requested_number:
+                return ref
+    return None
+
+
+def retrieve_pop3_message(mail, message_number: int) -> bytes:
+    response = mail.retr(int(message_number))
+    response_text = pop3_response_text(response[0] if isinstance(response, tuple) and response else response)
+    if response_text.startswith('-ERR'):
+        raise poplib.error_proto(response_text)
+    lines = pop3_long_response_lines(response)
+    payload = [
+        bytes(line) if isinstance(line, (bytearray, memoryview))
+        else line if isinstance(line, bytes)
+        else str(line).encode('utf-8', errors='replace')
+        for line in lines
+    ]
+    return b'\r\n'.join(payload) + (b'\r\n' if payload else b'')
+
+
+def login_pop3(mail, email_addr: str, pop3_password: str) -> None:
+    mail.user(email_addr)
+    mail.pass_(pop3_password)
+
+
+def close_pop3_connection(mail, rollback: bool = False) -> bool:
+    if not mail:
+        return True
+    close_succeeded = True
+    if rollback and hasattr(mail, 'rset'):
+        try:
+            mail.rset()
+        except Exception:
+            close_succeeded = False
+    try:
+        if hasattr(mail, 'quit'):
+            mail.quit()
+        elif hasattr(mail, 'close'):
+            mail.close()
+    except Exception:
+        close_succeeded = False
+        try:
+            if hasattr(mail, 'close'):
+                mail.close()
+        except Exception:
+            pass
+    return close_succeeded
+
+
+def normalize_pop3_auth_error(provider: str, pop3_host: str, raw_message: str) -> str:
+    message = sanitize_error_details(str(raw_message or '')).strip()
+    if (provider or '').strip().lower() in {'126', '163'}:
+        return '网易邮箱 POP3 登录失败，请在网页端开启 POP3 并使用客户端授权码；若仍失败，请检查当前网络或服务器 IP 是否被风控'
+    return message or 'POP3 认证失败，请检查邮箱地址、客户端授权码和服务器配置'
+
+
+def build_pop3_auth_error(provider: str, pop3_host: str, exc: Exception) -> Dict[str, Any]:
+    return build_error_payload(
+        'POP3_AUTH_FAILED',
+        normalize_pop3_auth_error(provider, pop3_host, str(exc)),
+        'POP3AuthError',
+        401,
+        '',
+    )
+
+
+def build_pop3_unsupported_error(message: str = 'POP3 不支持此操作') -> Dict[str, Any]:
+    return build_error_payload(
+        'POP3_UNSUPPORTED',
+        message,
+        'POP3UnsupportedError',
+        400,
+        '',
+    )
+
+
+def get_raw_email_pop3(email_addr: str, pop3_password: str, pop3_host: str,
+                       pop3_port: int, message_id: str, folder: str = 'inbox',
+                       proxy_url: str = '') -> Optional[bytes]:
+    if not message_id or str(folder or 'inbox').strip().lower() not in {'inbox', 'all'}:
+        return None
+
+    mail = None
+    try:
+        mail = create_pop3_connection(pop3_host, pop3_port, proxy_url)
+        login_pop3(mail, email_addr, pop3_password)
+        message_ref = resolve_pop3_message_ref(mail, message_id)
+        if not message_ref:
+            return None
+        return retrieve_pop3_message(mail, message_ref['number'])
+    except Exception:
+        return None
+    finally:
+        close_pop3_connection(mail)
+
+
+def get_emails_pop3(email_addr: str, pop3_password: str, pop3_host: str,
+                    pop3_port: int = 995, folder: str = 'inbox',
+                    provider: str = '163', skip: int = 0, top: int = 20,
+                    proxy_url: str = '') -> Dict[str, Any]:
+    folder_name = str(folder or 'inbox').strip().lower()
+    if folder_name not in {'inbox', 'all'}:
+        return {
+            'success': False,
+            'error': build_pop3_unsupported_error('POP3 只支持收件箱'),
+            'error_code': 'POP3_FOLDER_UNSUPPORTED',
+        }
+
+    mail = None
+    try:
+        skip = max(0, int(skip or 0))
+        top = max(1, int(top or 20))
+        mail = create_pop3_connection(pop3_host, pop3_port, proxy_url)
+        try:
+            login_pop3(mail, email_addr, pop3_password)
+        except poplib.error_proto as exc:
+            return {
+                'success': False,
+                'error': build_pop3_auth_error(provider, pop3_host, exc),
+                'error_code': 'POP3_AUTH_FAILED',
+            }
+
+        refs = list_pop3_message_refs(mail)
+        total = len(refs)
+        start_idx = max(0, total - skip - top)
+        end_idx = total - skip
+        if start_idx >= end_idx:
+            return {
+                'success': True,
+                'emails': [],
+                'method': 'POP3',
+                'has_more': False,
+                'folder': 'inbox',
+            }
+
+        emails_data: List[Dict[str, Any]] = []
+        for ref in refs[start_idx:end_idx][::-1]:
+            try:
+                raw_email = retrieve_pop3_message(mail, ref['number'])
+                msg = email.message_from_bytes(raw_email)
+                body_text, body_html = extract_text_and_html(msg)
+                preview_source = body_text or strip_html_content(body_html)
+                preview = preview_source[:200] + ('...' if len(preview_source) > 200 else '')
+                emails_data.append({
+                    'id': str(ref['id']),
+                    'subject': decode_header_value(msg.get('Subject', '无主题')),
+                    'from': decode_header_value(msg.get('From', '未知')),
+                    'to': decode_header_value(msg.get('To', '')),
+                    'date': msg.get('Date', ''),
+                    'id_mode': ref['id_mode'],
+                    'is_read': None,
+                    'read_state_available': False,
+                    'has_attachments': has_message_attachments(msg),
+                    'body_preview': preview,
+                    'folder': 'inbox',
+                })
+            except Exception:
+                continue
+
+        emails_data.sort(key=lambda item: parse_email_datetime(item.get('date')) or datetime.min, reverse=True)
+        return {
+            'success': True,
+            'emails': emails_data,
+            'method': 'POP3',
+            'has_more': start_idx > 0,
+            'folder': 'inbox',
+        }
+    except Exception as exc:
+        return {
+            'success': False,
+            'error': build_mail_fetch_error(
+                exc,
+                proxy_url,
+                '获取 POP3 邮件',
+                legacy_code='POP3_CONNECT_FAILED',
+                legacy_message=sanitize_error_details(str(exc)) or 'POP3 连接失败',
+                legacy_type='POP3ConnectError',
+                legacy_status=502,
+            ),
+            'error_code': 'POP3_CONNECT_FAILED',
+        }
+    finally:
+        close_pop3_connection(mail)
+
+
+def get_email_detail_pop3_result(email_addr: str, pop3_password: str, pop3_host: str,
+                                 pop3_port: int = 995, message_id: str = '',
+                                 folder: str = 'inbox', provider: str = '163',
+                                 proxy_url: str = '') -> Dict[str, Any]:
+    if not message_id:
+        return {'success': False, 'error': build_error_payload('EMAIL_DETAIL_INVALID', 'message_id 不能为空', 'ValidationError', 400, '')}
+    if str(folder or 'inbox').strip().lower() not in {'inbox', 'all'}:
+        return {'success': False, 'error': build_pop3_unsupported_error('POP3 只支持收件箱')}
+
+    mail = None
+    try:
+        mail = create_pop3_connection(pop3_host, pop3_port, proxy_url)
+        try:
+            login_pop3(mail, email_addr, pop3_password)
+        except poplib.error_proto as exc:
+            return {
+                'success': False,
+                'error': build_pop3_auth_error(provider, pop3_host, exc),
+            }
+
+        message_ref = resolve_pop3_message_ref(mail, message_id)
+        if not message_ref:
+            return {
+                'success': False,
+                'error': build_error_payload('EMAIL_DETAIL_NOT_FOUND', 'POP3 邮件不存在或已被删除', 'NotFoundError', 404, {'message_id': str(message_id)}),
+            }
+        msg = email.message_from_bytes(retrieve_pop3_message(mail, message_ref['number']))
+        detail = build_email_detail_from_message(msg, str(message_ref['id']))
+        detail['read_state_available'] = False
+        detail['folder'] = 'inbox'
+        detail['id_mode'] = message_ref['id_mode']
+        return {'success': True, 'email': detail, 'method': 'POP3'}
+    except Exception as exc:
+        return {
+            'success': False,
+            'error': build_error_payload(
+                'POP3_CONNECT_FAILED',
+                sanitize_error_details(str(exc)) or 'POP3 连接失败',
+                'POP3ConnectError',
+                502,
+                '',
+            ),
+        }
+    finally:
+        close_pop3_connection(mail)
+
+
+def download_email_attachment_pop3_result(email_addr: str, pop3_password: str, pop3_host: str,
+                                          pop3_port: int = 995, message_id: str = '',
+                                          attachment_id: str = '', folder: str = 'inbox',
+                                          provider: str = '163', proxy_url: str = '') -> Dict[str, Any]:
+    if not message_id or not attachment_id:
+        return {'success': False, 'error': build_error_payload('ATTACHMENT_INVALID', '附件参数不完整', 'ValidationError', 400, '')}
+    if str(folder or 'inbox').strip().lower() not in {'inbox', 'all'}:
+        return {'success': False, 'error': build_pop3_unsupported_error('POP3 只支持收件箱')}
+
+    mail = None
+    try:
+        mail = create_pop3_connection(pop3_host, pop3_port, proxy_url)
+        try:
+            login_pop3(mail, email_addr, pop3_password)
+        except poplib.error_proto as exc:
+            return {'success': False, 'error': build_pop3_auth_error(provider, pop3_host, exc)}
+        message_ref = resolve_pop3_message_ref(mail, message_id)
+        if not message_ref:
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'ATTACHMENT_FETCH_FAILED',
+                    'POP3 邮件不存在或已被删除',
+                    'NotFoundError',
+                    404,
+                    '',
+                ),
+            }
+        msg = email.message_from_bytes(retrieve_pop3_message(mail, message_ref['number']))
+        attachment = get_message_attachment_by_id(msg, attachment_id)
+        if not attachment:
+            return {
+                'success': False,
+                'error': build_error_payload(
+                    'ATTACHMENT_NOT_FOUND',
+                    '附件不存在',
+                    'NotFoundError',
+                    404,
+                    {'attachment_id': attachment_id},
+                ),
+            }
+        return {
+            'success': True,
+            'filename': attachment.get('name', 'attachment'),
+            'content_type': attachment.get('content_type', 'application/octet-stream'),
+            'content': attachment.get('content', b''),
+        }
+    except poplib.error_proto as exc:
+        return {'success': False, 'error': build_pop3_auth_error(provider, pop3_host, exc)}
+    except Exception as exc:
+        return {
+            'success': False,
+            'error': build_error_payload(
+                'POP3_CONNECT_FAILED',
+                sanitize_error_details(str(exc)) or 'POP3 连接失败',
+                'POP3ConnectError',
+                502,
+                '',
+            ),
+        }
+    finally:
+        close_pop3_connection(mail)
+
+
+def mark_emails_read_pop3_result(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    total = len(items or [])
+    unsupported_error = build_pop3_unsupported_error('POP3 协议不提供标记已读功能')
+    errors = [
+        {'id': str(item.get('id') or ''), 'error': unsupported_error}
+        for item in items or []
+    ]
+    return {
+        'success': False,
+        'success_count': 0,
+        'failed_count': total,
+        'updated_ids': [],
+        'errors': errors or [unsupported_error],
+        'error': unsupported_error,
+    }
+
+
+def delete_emails_pop3_result(email_addr: str, pop3_password: str, pop3_host: str,
+                              items: List[Dict[str, Any]], pop3_port: int = 995,
+                              provider: str = '163', proxy_url: str = '') -> Dict[str, Any]:
+    mail = None
+    rollback = False
+    success_count = 0
+    deleted_ids: List[str] = []
+    errors: List[Any] = []
+    try:
+        mail = create_pop3_connection(pop3_host, pop3_port, proxy_url)
+        try:
+            login_pop3(mail, email_addr, pop3_password)
+        except poplib.error_proto as exc:
+            error = build_pop3_auth_error(provider, pop3_host, exc)
+            return {
+                'success': False,
+                'success_count': 0,
+                'failed_count': len(items or []),
+                'deleted_ids': [],
+                'updated_ids': [],
+                'errors': [{'id': str(item.get('id') or ''), 'error': error} for item in items or []],
+                'error': error,
+            }
+
+        refs = list_pop3_message_refs(mail)
+        refs_by_id = {str(ref['id']): ref for ref in refs}
+        refs_by_number = {str(ref['number']): ref for ref in refs}
+        for item in items or []:
+            message_id = str(item.get('id') or '').strip()
+            folder = str(item.get('folder') or 'inbox').strip().lower()
+            if folder not in {'inbox', 'all'}:
+                errors.append({'id': message_id, 'error': build_pop3_unsupported_error('POP3 只支持收件箱')})
+                continue
+            ref = refs_by_id.get(message_id) or refs_by_number.get(message_id)
+            if not ref:
+                errors.append({
+                    'id': message_id,
+                    'error': build_error_payload('EMAIL_DELETE_NOT_FOUND', 'POP3 邮件不存在或已被删除', 'NotFoundError', 404, {'message_id': message_id}),
+                })
+                continue
+            try:
+                response = mail.dele(int(ref['number']))
+                if pop3_response_text(response).startswith('-ERR'):
+                    raise poplib.error_proto(pop3_response_text(response))
+                success_count += 1
+                deleted_ids.append(message_id)
+            except Exception as exc:
+                errors.append({
+                    'id': message_id,
+                    'error': build_error_payload('EMAIL_DELETE_FAILED', '删除 POP3 邮件失败', 'POP3DeleteError', 502, sanitize_error_details(str(exc))),
+                })
+
+        if success_count == 0:
+            close_pop3_connection(mail, rollback=True)
+            mail = None
+            return {
+                'success': False,
+                'success_count': 0,
+                'failed_count': len(items or []),
+                'deleted_ids': [],
+                'updated_ids': [],
+                'errors': errors,
+            }
+
+        committed = close_pop3_connection(mail)
+        mail = None
+        if not committed:
+            commit_error = build_error_payload(
+                'POP3_DELETE_COMMIT_FAILED',
+                'POP3 删除操作未能提交，请重新检查邮件状态',
+                'POP3CommitError',
+                502,
+                '',
+            )
+            return {
+                'success': False,
+                'success_count': 0,
+                'failed_count': len(items or []),
+                'deleted_ids': [],
+                'updated_ids': [],
+                'errors': errors + [{'id': '', 'error': commit_error}],
+                'error': commit_error,
+            }
+
+        failed_count = len(items or []) - success_count
+        return {
+            'success': failed_count == 0,
+            'success_count': success_count,
+            'failed_count': failed_count,
+            'deleted_ids': deleted_ids,
+            'updated_ids': [],
+            'errors': errors,
+        }
+    except poplib.error_proto as exc:
+        rollback = True
+        error = build_pop3_auth_error(provider, pop3_host, exc)
+        return {
+            'success': False,
+            'success_count': 0,
+            'failed_count': len(items or []),
+            'deleted_ids': [],
+            'updated_ids': [],
+            'errors': [{'id': str(item.get('id') or ''), 'error': error} for item in items or []],
+            'error': error,
+        }
+    except Exception as exc:
+        rollback = True
+        error = build_error_payload(
+            'POP3_CONNECT_FAILED',
+            sanitize_error_details(str(exc)) or 'POP3 连接失败',
+            'POP3ConnectError',
+            502,
+            '',
+        )
+        return {
+            'success': False,
+            'success_count': 0 if rollback else success_count,
+            'failed_count': len(items or []) if rollback else max(0, len(items or []) - success_count),
+            'deleted_ids': [] if rollback else deleted_ids,
+            'updated_ids': [],
+            'errors': [{'id': str(item.get('id') or ''), 'error': error} for item in items or []],
+            'error': error,
+        }
+    finally:
+        if mail:
+            close_pop3_connection(mail, rollback=rollback)
+
+
 def quote_imap_id_value(value: str) -> str:
     return str(value or '').replace('\\', '\\\\').replace('"', r'\"')
 

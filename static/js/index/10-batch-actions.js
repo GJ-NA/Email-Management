@@ -307,7 +307,7 @@
             const batchDeleteBtn = document.getElementById('batchDeleteAccountsBtn');
             const panel = document.getElementById('accountPanel');
             const refreshableChecked = checked.filter(cb => cb.dataset.refreshable === 'true');
-            const autoAuthChecked = checked.filter(cb => (cb.dataset.accountType || 'outlook') !== 'imap');
+            const autoAuthChecked = checked.filter(cb => (cb.dataset.accountType || 'outlook') === 'outlook');
             const enableForwardingChecked = checked.filter(cb => cb.dataset.forwardEnabled !== 'true');
             const disableForwardingChecked = checked.filter(cb => cb.dataset.forwardEnabled === 'true');
             const isForwardingUpdating = batchEnableForwardingBtn?.dataset.loading === 'true'
@@ -814,7 +814,7 @@
             }
 
             const eligibleAccounts = getAccountBatchSelectedAccounts(context)
-                .filter(account => String(account.account_type || 'outlook').toLowerCase() !== 'imap');
+                .filter(account => String(account.account_type || 'outlook').toLowerCase() === 'outlook');
             const accountIds = eligibleAccounts
                 .map(account => normalizeAccountBatchId(account.id))
                 .filter(Number.isFinite);
@@ -865,7 +865,7 @@
 
             const accountIds = getAccountBatchSelectedIds(context);
             const refreshableCount = getAccountBatchSelectedAccounts(context)
-                .filter(account => String(account.account_type || 'outlook').toLowerCase() !== 'imap')
+                .filter(account => String(account.account_type || 'outlook').toLowerCase() === 'outlook')
                 .length;
 
             if (!accountIds.length) {

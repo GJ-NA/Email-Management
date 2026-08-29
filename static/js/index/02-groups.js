@@ -1701,7 +1701,7 @@
                     <input type="checkbox" class="account-select-checkbox" value="${acc.id}" 
                            data-account-email="${escapeHtml(acc.email)}"
                            data-account-type="${escapeHtml(acc.account_type || 'outlook')}"
-                           data-refreshable="${acc.account_type !== 'imap' ? 'true' : 'false'}"
+                           data-refreshable="${String(acc.account_type || 'outlook').toLowerCase() === 'outlook' ? 'true' : 'false'}"
                            data-forward-enabled="${acc.forward_enabled ? 'true' : 'false'}"
                            onclick="handleAccountSelectionCheckboxClick(event)">
                     <div class="account-body">
@@ -1714,8 +1714,9 @@
                         </div>
                         <div class="account-meta-row">
                             <span class="account-status-pill provider"
-                                style="--pill-accent: ${acc.account_type === 'imap' ? '#0ea5e9' : '#2563eb'}">
-                                ${escapeHtml(getProviderLabel(acc.provider || (acc.account_type === 'imap' ? 'custom' : 'outlook')))}
+                                style="--pill-accent: ${acc.account_type === 'pop3' ? '#7c3aed' : (acc.account_type === 'imap' ? '#0ea5e9' : '#2563eb')}"
+                                title="${escapeHtml(acc.account_type === 'pop3' ? 'POP3 收件' : (acc.account_type === 'imap' ? 'IMAP 收件' : 'Outlook OAuth'))}">
+                                ${escapeHtml(getProviderLabel(acc.provider || (acc.account_type === 'outlook' ? 'outlook' : 'custom')))}${acc.account_type === 'pop3' ? ' POP3' : ''}
                             </span>
                             ${renderAccountVerifyStatus(acc)}
                             ${showForwardStatusLabel(!!acc.forward_enabled)}
@@ -1735,7 +1736,7 @@
                             <button class="account-action-btn" type="button" data-account-action="share" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">分享邮箱</button>
                             <button class="account-action-btn" type="button" data-account-action="forwardingLogs" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">转发日志</button>
                             <button class="account-action-btn" type="button" data-account-action="toggleStatus" data-account-id="${acc.id}" data-account-status="${escapeHtml(acc.status || 'active')}">${acc.status === 'inactive' ? '启用账号' : '停用账号'}</button>
-                            ${(acc.account_type || 'outlook') !== 'imap' ? `<button class="account-action-btn" type="button" data-account-action="outlookAutoAuth" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">加入自动授权</button>` : ''}
+                            ${((acc.account_type || 'outlook') !== 'imap' && (acc.account_type || 'outlook') !== 'pop3') ? `<button class="account-action-btn" type="button" data-account-action="outlookAutoAuth" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">加入自动授权</button>` : ''}
                             <button class="account-action-btn" type="button" data-account-action="edit" data-account-id="${acc.id}">编辑账号</button>
                             <button class="account-action-btn delete" type="button" data-account-action="delete" data-account-id="${acc.id}" data-account-email="${escapeHtml(acc.email)}">删除账号</button>
                         </div>
@@ -1970,6 +1971,7 @@
 
         function resetSelectedAccountView() {
             currentAccount = null;
+            currentAccountType = '';
             currentEmailId = null;
             currentEmailDetail = null;
             currentEmails = [];
@@ -2434,6 +2436,8 @@
         function updateEditAccountFields() {
             const provider = document.getElementById('editProviderSelect')?.value || 'outlook';
             const isOutlook = provider === 'outlook';
+            const protocolGroup = document.getElementById('editProtocolGroup');
+            const protocolSelect = document.getElementById('editAccountType');
             const passwordGroup = document.getElementById('editPassword')?.closest('.form-group');
             const clientIdGroup = document.getElementById('editClientId')?.closest('.form-group');
             const authorizationTypeGroup = document.getElementById('editAuthorizationType')?.closest('.form-group');
@@ -2441,6 +2445,20 @@
             const imapFields = document.getElementById('editImapFields');
             const customImapFields = document.getElementById('editCustomImapFields');
             const reauthorizeGroup = document.getElementById('editReauthorizeGroup');
+            const passwordLabel = document.getElementById('editImapPasswordLabel');
+            const hostLabel = document.getElementById('editImapHostLabel');
+            const portLabel = document.getElementById('editImapPortLabel');
+            const hostInput = document.getElementById('editImapHost');
+            const portInput = document.getElementById('editImapPort');
+            const authHint = document.getElementById('editAccountAuthHint');
+            const supportsPop3 = provider === '163';
+
+            if (!supportsPop3 && protocolSelect) {
+                protocolSelect.value = 'imap';
+            }
+            const accountType = isOutlook
+                ? 'outlook'
+                : (supportsPop3 && protocolSelect?.value === 'pop3' ? 'pop3' : 'imap');
 
             if (passwordGroup) passwordGroup.style.display = isOutlook ? '' : 'none';
             if (clientIdGroup) clientIdGroup.style.display = isOutlook ? '' : 'none';
@@ -2449,6 +2467,14 @@
             if (imapFields) imapFields.style.display = isOutlook ? 'none' : '';
             if (customImapFields) customImapFields.style.display = provider === 'custom' ? '' : 'none';
             if (reauthorizeGroup) reauthorizeGroup.style.display = isOutlook ? '' : 'none';
+            if (protocolGroup) protocolGroup.style.display = !isOutlook && supportsPop3 ? '' : 'none';
+            if (passwordLabel) passwordLabel.textContent = accountType === 'pop3' ? 'POP3 客户端授权码' : 'IMAP 密码 / 授权码';
+            if (hostLabel) hostLabel.textContent = accountType === 'pop3' ? 'POP3 服务器' : 'IMAP 服务器';
+            if (portLabel) portLabel.textContent = accountType === 'pop3' ? 'POP3 端口' : 'IMAP 端口';
+            if (hostInput) hostInput.placeholder = accountType === 'pop3' ? 'pop.example.com' : 'imap.example.com';
+            if (portInput && accountType === 'pop3' && (!portInput.value || portInput.value === '993')) portInput.value = '995';
+            if (portInput && accountType !== 'pop3' && (!portInput.value || portInput.value === '995')) portInput.value = '993';
+            if (authHint) authHint.textContent = isOutlook ? 'Outlook Token' : (accountType === 'pop3' ? 'POP3 客户端授权码' : 'IMAP 密码或授权码');
         }
 
         function updateImportHint() {
@@ -2461,6 +2487,9 @@
             const cloudflareModeSelect = document.getElementById('importCloudflareImportMode');
             const providerGroup = document.getElementById('importProviderGroup');
             const providerSelect = document.getElementById('importProviderSelect');
+            const protocolGroup = document.getElementById('importProtocolGroup');
+            const protocolSelect = document.getElementById('importAccountType');
+            const protocolHint = document.getElementById('importProtocolHint');
             const exampleEl = document.getElementById('importFormatExample');
             const importSource = document.querySelector('#addAccountModal .import-account-source');
             const customImapSettings = document.getElementById('customImapSettings');
@@ -2484,6 +2513,7 @@
 
             if (isTempGroup) {
                 if (customImapSettings) customImapSettings.style.display = 'none';
+                if (protocolGroup) protocolGroup.style.display = 'none';
                 const channel = channelSelect ? channelSelect.value : 'gptmail';
                 const isCloudflare = channel === 'cloudflare';
                 const cloudflareMode = cloudflareModeSelect ? cloudflareModeSelect.value : 'auto';
@@ -2531,6 +2561,17 @@
 
             const provider = providerSelect ? providerSelect.value : 'outlook';
             const isOutlook = provider === 'outlook';
+            const supportsPop3 = provider === '163';
+            if (!supportsPop3 && protocolSelect) protocolSelect.value = 'imap';
+            const accountType = isOutlook
+                ? 'outlook'
+                : (supportsPop3 && protocolSelect?.value === 'pop3' ? 'pop3' : 'imap');
+            if (protocolGroup) protocolGroup.style.display = !isOutlook && supportsPop3 ? '' : 'none';
+            if (protocolHint) {
+                protocolHint.textContent = accountType === 'pop3'
+                    ? '163 POP3 使用客户端授权码，仅支持收件箱。'
+                    : '163 可使用 IMAP 授权码或 POP3 客户端授权码。';
+            }
             if (customImapSettings) customImapSettings.style.display = provider === 'custom' ? '' : 'none';
             if (exampleEl) exampleEl.style.display = '';
 
@@ -2550,6 +2591,15 @@
                     const host = customHost?.value?.trim() || 'imap.example.com';
                     const port = customPort?.value?.trim() || '993';
                     exampleEl.textContent = `示例：\nuser@example.com----app-password\nuser@example.com----app-password----${host}----${port}`;
+                }
+                return;
+            }
+
+            if (accountType === 'pop3') {
+                hintEl.textContent = '格式：邮箱----POP3客户端授权码，每行一个。163 POP3 仅同步收件箱。';
+                inputEl.placeholder = '邮箱----POP3客户端授权码';
+                if (exampleEl) {
+                    exampleEl.textContent = '示例：\nuser@163.com----pop3-client-code';
                 }
                 return;
             }

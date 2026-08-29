@@ -136,9 +136,11 @@ def verify_one_account(account: Dict[str, Any], probe_imap: bool) -> Dict[str, A
         str(account.get('fallback_proxy_url_2') or '').strip(),
     ]
 
-    account_type = str(account.get('account_type') or '').strip().lower()
-    if account_type == 'imap':
-        # 普通 IMAP 账号没有 OAuth 字段；兼容旧数据中把密码保存在
+    account_type = normalize_mail_account_type(
+        account.get('account_type'), account.get('provider', ''), account.get('email', '')
+    )
+    if account_type in {'imap', 'pop3'}:
+        # 普通 IMAP/POP3 账号没有 OAuth 字段；兼容旧数据中把密码保存在
         # password 列的记录，避免在 OAuth 字段检查处被提前判为失效。
         imap_password_value = str(
             account.get('imap_password') or account.get('password') or ''
@@ -146,35 +148,51 @@ def verify_one_account(account: Dict[str, Any], probe_imap: bool) -> Dict[str, A
         try:
             imap_password_value = decrypt_data(imap_password_value) if imap_password_value else ''
         except Exception as exc:
-            result['verify_status'] = 'imap_password_failed'
+            result['verify_status'] = 'pop3_password_failed' if account_type == 'pop3' else 'imap_password_failed'
             result['verify_imap_status'] = 'failed'
-            result['error'] = sanitize_error_details(f'解密 IMAP 密码失败: {exc}')
+            protocol_label = 'POP3 授权码' if account_type == 'pop3' else 'IMAP 密码'
+            result['error'] = sanitize_error_details(f'解密{protocol_label}失败: {exc}')
             return finalize_verify_result(result, started)
 
         if not imap_password_value or not account.get('imap_host'):
             result['verify_status'] = 'invalid'
             result['verify_imap_status'] = 'not_run'
-            result['error'] = '缺少 IMAP 密码或服务器地址'
+            protocol_label = 'POP3 授权码' if account_type == 'pop3' else 'IMAP 密码'
+            result['error'] = f'缺少{protocol_label}或服务器地址'
             return finalize_verify_result(result, started)
 
-        imap_result = get_emails_imap_generic(
-            email,
-            imap_password_value,
-            str(account.get('imap_host') or ''),
-            int(account.get('imap_port') or 993),
-            folder='inbox',
-            provider=str(account.get('provider') or 'custom'),
-            skip=0,
-            top=1,
-            proxy_url=proxy_url,
-        )
+        if account_type == 'pop3':
+            imap_result = get_emails_pop3(
+                email,
+                imap_password_value,
+                str(account.get('imap_host') or ''),
+                int(account.get('imap_port') or 995),
+                folder='inbox',
+                provider=str(account.get('provider') or '163'),
+                skip=0,
+                top=1,
+                proxy_url=proxy_url,
+            )
+        else:
+            imap_result = get_emails_imap_generic(
+                email,
+                imap_password_value,
+                str(account.get('imap_host') or ''),
+                int(account.get('imap_port') or 993),
+                folder='inbox',
+                provider=str(account.get('provider') or 'custom'),
+                skip=0,
+                top=1,
+                proxy_url=proxy_url,
+            )
         if imap_result.get('success'):
-            result['verify_status'] = 'imap_password_ok'
+            result['verify_status'] = 'pop3_password_ok' if account_type == 'pop3' else 'imap_password_ok'
             result['verify_imap_status'] = 'ok'
         else:
-            result['verify_status'] = 'imap_password_failed'
+            result['verify_status'] = 'pop3_password_failed' if account_type == 'pop3' else 'imap_password_failed'
             result['verify_imap_status'] = 'failed'
-            result['error'] = sanitize_error_details(str(imap_result.get('error') or 'IMAP 验证失败'))
+            fallback_message = 'POP3 验证失败' if account_type == 'pop3' else 'IMAP 验证失败'
+            result['error'] = sanitize_error_details(str(imap_result.get('error') or fallback_message))
         return finalize_verify_result(result, started)
 
     if not client_id or not encrypted_refresh_token:

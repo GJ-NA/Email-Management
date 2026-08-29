@@ -130,6 +130,14 @@
                                     <option value="custom">自定义 IMAP</option>
                                 </select>
                             </div>
+                            <div class="form-group" id="importProtocolGroup" style="display: none;">
+                                <label class="form-label">收件协议</label>
+                                <select class="form-select" id="importAccountType" onchange="updateImportHint()">
+                                    <option value="imap">IMAP</option>
+                                    <option value="pop3">POP3</option>
+                                </select>
+                                <div class="form-hint" id="importProtocolHint">163 POP3 使用客户端授权码，仅支持收件箱。</div>
+                            </div>
                             <div id="customImapSettings" class="import-custom-imap" style="display: none;">
                                 <div class="form-group">
                                     <label class="form-label">IMAP 服务器</label>
@@ -251,6 +259,13 @@
                                     <option value="custom">自定义 IMAP</option>
                                 </select>
                             </div>
+                            <div class="form-group" id="editProtocolGroup" style="display: none;">
+                                <label class="form-label">收件协议</label>
+                                <select class="form-select" id="editAccountType" onchange="updateEditAccountFields()">
+                                    <option value="imap">IMAP</option>
+                                    <option value="pop3">POP3</option>
+                                </select>
+                            </div>
                             <div class="form-group">
                                 <label class="form-label">所属分组</label>
                                 <select class="form-select" id="editGroupSelect">
@@ -300,7 +315,7 @@
                     <details class="edit-account-section" open>
                         <summary>
                             <span>认证信息</span>
-                            <small>Outlook Token 或 IMAP 授权</small>
+                            <small id="editAccountAuthHint">Outlook Token 或 IMAP/POP3 授权</small>
                         </summary>
                         <div class="edit-account-grid edit-account-grid--compact">
                             <div class="form-group">
@@ -338,7 +353,7 @@
                             </div>
                             <div id="editImapFields" class="edit-account-grid edit-account-span-2" style="display: none;">
                                 <div class="form-group">
-                                    <label class="form-label">IMAP 密码 / 授权码</label>
+                                    <label class="form-label" id="editImapPasswordLabel">IMAP 密码 / 授权码</label>
                                     <div class="secret-input-row">
                                         <input type="text" class="form-input" id="editImapPassword">
                                         <button type="button" class="secret-reveal-btn" id="revealEditImapPasswordBtn" onclick="toggleEditSecretVisibility('editImapPassword', 'revealEditImapPasswordBtn')" title="显示 IMAP 密码" aria-label="显示 IMAP 密码" style="display: none;">
@@ -351,11 +366,11 @@
                                 </div>
                                 <div id="editCustomImapFields" class="edit-account-grid edit-account-span-2" style="display: none;">
                                     <div class="form-group">
-                                        <label class="form-label">IMAP 服务器</label>
+                                        <label class="form-label" id="editImapHostLabel">IMAP 服务器</label>
                                         <input type="text" class="form-input" id="editImapHost" placeholder="imap.example.com">
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">IMAP 端口</label>
+                                        <label class="form-label" id="editImapPortLabel">IMAP 端口</label>
                                         <input type="number" class="form-input" id="editImapPort" value="993" min="1" max="65535">
                                     </div>
                                 </div>

@@ -424,7 +424,22 @@ def build_forward_cursor_reset(account: Dict[str, Any], mode: str = 'window', lo
 def fetch_forward_detail(account: Dict[str, Any], message_id: str, folder: str = 'inbox') -> Optional[Dict[str, Any]]:
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
-    if account.get('account_type') == 'imap':
+    account_type = normalize_mail_account_type(
+        account.get('account_type'), account.get('provider', ''), account.get('email', '')
+    )
+    if account_type == 'pop3':
+        result = get_email_detail_pop3_result(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 995),
+            message_id,
+            folder,
+            account.get('provider', '163'),
+            proxy_url,
+        )
+        return result.get('email') if result.get('success') else None
+    if account_type == 'imap':
         result = get_email_detail_imap_generic_result(
             account['email'],
             account.get('imap_password', ''),
@@ -616,8 +631,11 @@ def process_forwarding_account(account_row: Dict[str, Any], job_config: Dict[str
         conn = open_forwarding_db_connection()
         try:
             cursor_time = parse_email_datetime(account.get('forward_last_checked_at', ''))
+            account_type = normalize_mail_account_type(
+                account.get('account_type'), account.get('provider', ''), account.get('email', '')
+            )
             folders_to_scan = ['inbox']
-            if job_config.get('include_junkemail'):
+            if job_config.get('include_junkemail') and account_type != 'pop3':
                 folders_to_scan.append('junkemail')
 
             emails = []
@@ -1538,7 +1556,9 @@ def api_update_account_v2(account_id):
         return jsonify({'success': False, 'error': 'IMAP 端口无效'})
 
     provider_meta = get_provider_meta(provider, email_addr)
+    account_type = normalize_mail_account_type(account_type, provider_meta['key'], email_addr)
     is_outlook = account_type == 'outlook' or provider_meta['key'] == 'outlook'
+    is_pop3 = account_type == 'pop3'
 
     if is_outlook:
         if not email_addr or not client_id or not refresh_token:
@@ -1551,8 +1571,9 @@ def api_update_account_v2(account_id):
         authorizationtype = authorizationtype if authorizationtype_provided else current_account.get('authorizationtype', '')
     else:
         if not email_addr or not imap_password:
-            return jsonify({'success': False, 'error': '邮箱和 IMAP 密码不能为空'})
-        account_type = 'imap'
+            credential_label = 'POP3 授权码' if is_pop3 else 'IMAP 密码'
+            return jsonify({'success': False, 'error': f'邮箱和{credential_label}不能为空'})
+        account_type = 'pop3' if is_pop3 else 'imap'
         provider = provider_meta['key']
         client_id = ''
         refresh_token = ''
@@ -1560,10 +1581,14 @@ def api_update_account_v2(account_id):
         authorizationtype = ''
         if provider == 'custom':
             if not imap_host:
-                return jsonify({'success': False, 'error': '自定义 IMAP 必须填写服务器地址'})
+                protocol_label = 'POP3' if is_pop3 else 'IMAP'
+                return jsonify({'success': False, 'error': f'自定义 {protocol_label} 必须填写服务器地址'})
         else:
-            imap_host = provider_meta.get('imap_host', '')
-            imap_port = int(provider_meta.get('imap_port', 993) or 993)
+            connection_meta = get_provider_connection_meta(provider, email_addr, account_type)
+            if not connection_meta.get('host'):
+                return jsonify({'success': False, 'error': f'{provider_meta.get("label", provider)}不支持{account_type.upper()}收件协议'})
+            imap_host = connection_meta.get('host', '')
+            imap_port = int(connection_meta.get('port', 993) or 993)
 
     if aliases_provided:
         _, alias_errors = validate_account_aliases(account_id, email_addr, aliases)
@@ -1794,7 +1819,25 @@ def email_matches_filters(account: Dict[str, Any], item: Dict[str, Any],
 
     proxy_url = get_account_proxy_url(account)
     fallback_proxy_urls = get_account_proxy_failover_urls(account)
-    if account.get('account_type') == 'imap':
+    account_type = normalize_mail_account_type(
+        account.get('account_type'), account.get('provider', ''), account.get('email', '')
+    )
+    if account_type == 'pop3':
+        detail_payload = get_email_detail_pop3_result(
+            account['email'],
+            account.get('imap_password', ''),
+            account.get('imap_host', ''),
+            account.get('imap_port', 995),
+            str(item.get('id', '')),
+            item.get('folder', 'inbox'),
+            account.get('provider', '163'),
+            proxy_url,
+        )
+        if detail_payload and detail_payload.get('success'):
+            body = str((detail_payload.get('email') or {}).get('body', '') or '')
+            return keyword in strip_html_content(body).lower()
+        return False
+    if account_type == 'imap':
         detail_payload = get_email_detail_imap_generic_result(
             account['email'],
             account.get('imap_password', ''),

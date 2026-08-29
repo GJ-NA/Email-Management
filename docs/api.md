@@ -840,6 +840,9 @@ curl -X POST -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
 - Outlook 反序: 每行 `邮箱----密码----RefreshToken----ClientID`，并设置 `account_format=refresh_token_client_id`
 - 非 Outlook IMAP: 每行 `邮箱----IMAP密码`
 - 自定义 IMAP: 每行 `邮箱----IMAP密码----IMAP主机----IMAP端口`
+- 163 POP3: 每行 `邮箱----客户端授权码----pop3`，使用 `pop.163.com:995`
+
+163 POP3 的客户端授权码复用 `imap_password` 字段保存，服务端会按账号敏感信息加密存储。POP3 账号只支持收件箱；邮件列表返回的 `id_mode` 为 `uidl`，服务器不支持 UIDL 时退回 `number`。
 
 #### 请求示例
 
@@ -919,7 +922,7 @@ Content-Type: application/json
 更新账号信息。
 
 - 若请求体只有 `status`，则只更新账号状态
-- 支持 Outlook 账号和 IMAP 账号
+- 支持 Outlook、IMAP 和 POP3 账号
 - 现在支持直接在更新账号时一起保存别名
 - `proxy_url`、`fallback_proxy_url_1`、`fallback_proxy_url_2` 未传时保留账号现有代理配置；显式传空字符串可清空账号覆盖
 
@@ -931,11 +934,11 @@ Content-Type: application/json
 | `password` | string | 否 | 账号密码，Outlook 可为空 |
 | `client_id` | string | Outlook 必填 | Outlook Client ID |
 | `refresh_token` | string | Outlook 必填 | Outlook Refresh Token |
-| `account_type` | string | 否 | `outlook` 或 `imap` |
+| `account_type` | string | 否 | `outlook`、`imap` 或 `pop3` |
 | `provider` | string | 否 | `outlook`、`auto`、`qq`、`163`、`126`、`yahoo`、`aliyun`、`custom` |
-| `imap_host` | string | 自定义 IMAP 必填 | 自定义 IMAP 服务器 |
-| `imap_port` | int | 否 | IMAP 端口 |
-| `imap_password` | string | IMAP 必填 | IMAP 密码 |
+| `imap_host` | string | 自定义 IMAP/POP3 必填 | 自定义收件服务器；163 POP3 使用 `pop.163.com` |
+| `imap_port` | int | 否 | IMAP 或 POP3 端口；163 POP3 默认 `995` |
+| `imap_password` | string | IMAP/POP3 必填 | IMAP 密码，或 163 POP3 客户端授权码 |
 | `group_id` | int | 否 | 分组 ID |
 | `remark` | string | 否 | 备注 |
 | `status` | string | 否 | `active` 等状态值 |
@@ -944,6 +947,8 @@ Content-Type: application/json
 | `fallback_proxy_url_1` | string | 否 | 账号级回退代理 1，支持 `direct` / `直连` |
 | `fallback_proxy_url_2` | string | 否 | 账号级回退代理 2，支持 `direct` / `直连` |
 | `aliases` | array<string> | 否 | 账号别名列表；若传入则按新列表整体替换 |
+
+当 `account_type=pop3` 且 `provider=163` 时，后端会自动使用 `pop.163.com:995`，不需要在请求体中重复填写服务器地址。POP3 仅支持收件箱；`folder=all` 只作为兼容参数，实际不会读取垃圾邮件或已删除邮件。POP3 邮件的 ID 模式为 `uidl`，不支持 UIDL 时为 `number`；POP3 不提供已读状态，也不支持标记已读。
 
 #### 请求示例
 
@@ -1775,7 +1780,9 @@ Content-Type: application/json
 | `has_attachments` | bool | 是否有附件 |
 | `body_preview` | string | 邮件预览 |
 | `folder` | string | 所属文件夹 |
-| `id_mode` | string | 消息 ID 模式：Graph 为 `graph`，OAuth IMAP 常见为 `uid` 或 `sequence`，用于详情、标记已读和附件下载复用同一种 ID 语义 |
+| `id_mode` | string | 消息 ID 模式：Graph 为 `graph`，OAuth IMAP 常见为 `uid` 或 `sequence`，POP3 为 `uidl` 或 `number`；详情、删除和附件下载应复用列表返回的 ID 语义 |
+
+对于 POP3 账号，邮件列表只读取收件箱，`is_read` 为 `null` 且 `read_state_available=false`。POP3 服务器不提供可靠的已读状态。
 
 ### GET `/api/email/<email_addr>/<message_id>`
 
@@ -1787,7 +1794,7 @@ Content-Type: application/json
 | --- | --- | --- | --- |
 | `folder` | string | 否 | 当前邮件所在文件夹，默认 `inbox` |
 | `method` | string | 否 | 优先取详情的方式，常见为 `graph`；传 `imap` 可走 Outlook OAuth IMAP 回退 |
-| `id_mode` | string | 否 | OAuth IMAP 消息 ID 模式，支持 `uid`、`sequence`；缺省或非法值按 `uid` 处理 |
+| `id_mode` | string | 否 | OAuth IMAP 消息 ID 模式支持 `uid`、`sequence`；POP3 支持 `uidl`、`number`；缺省时按对应协议的默认模式处理 |
 | `source` | string | 否 | 传 `local` 时优先返回已缓存的本地保留详情正文 |
 | `prefer_local` | bool | 否 | `1` / `true` / `yes` / `on` 等价于 `source=local` |
 
@@ -1829,7 +1836,7 @@ Content-Type: application/json
 | --- | --- | --- | --- |
 | `folder` | string | 否 | 当前邮件所在文件夹，默认 `inbox` |
 | `method` | string | 否 | Outlook 账号优先使用 `graph`，传 `imap` 时走 IMAP 下载 |
-| `id_mode` | string | 否 | OAuth IMAP 附件下载使用的消息 ID 模式，支持 `uid`、`sequence`；缺省按 `uid` 处理 |
+| `id_mode` | string | 否 | OAuth IMAP 附件下载支持 `uid`、`sequence`；POP3 支持 `uidl`、`number`；缺省时按对应协议的默认模式处理 |
 
 ### GET `/api/email/<email_addr>/<message_id>/attachments/download-all`
 
@@ -1849,6 +1856,8 @@ ZIP 内文件名使用附件原始文件名；如果多个附件同名，会自�
 
 批量标记邮件为已读。
 
+POP3 不提供标记已读功能。对 POP3 账号调用此接口时会返回 `success=false`，错误码为 `POP3_UNSUPPORTED`，不会修改服务器上的邮件。
+
 #### 请求体
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -1865,7 +1874,7 @@ ZIP 内文件名使用附件原始文件名；如果多个附件同名，会自�
 | --- | --- | --- |
 | `id` / `message_id` | string | 邮件 ID |
 | `folder` | string | `inbox`、`junkemail`、`deleteditems`、`all` |
-| `id_mode` | string | `graph`、`uid`、`sequence` |
+| `id_mode` | string | `graph`、`uid`、`sequence`、`uidl` 或 `number` |
 
 #### 请求示例
 
@@ -1971,6 +1980,7 @@ ZIP 内文件名使用附件原始文件名；如果多个附件同名，会自�
 - 推荐传 `items`（含 `id` / `folder` / `id_mode`）与 `method`，与 `/api/emails/mark-read` 一致
 - Outlook 账号按 `id_mode`/`method` 分流：`graph` 走 Graph API，`uid`/`sequence` 走 OAuth IMAP
 - 标准 IMAP 账号通过 IMAP `STORE \\Deleted` + `EXPUNGE` 永久删除
+- POP3 账号只支持收件箱，按 `uidl` 或 `number` 定位邮件，通过 POP3 `DELE` 标记删除并在 `QUIT` 时提交；提交失败会返回 `POP3_DELETE_COMMIT_FAILED`
 - 仍接受仅传 `ids` 的旧客户端；此时默认按 Graph 处理
 
 ## 临时邮箱

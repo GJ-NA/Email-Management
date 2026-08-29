@@ -3,6 +3,7 @@
         // 全局状态
         let csrfToken = null;
         let currentAccount = null;
+        let currentAccountType = '';
         let currentGroupId = null;
         let currentEmails = [];
         let currentMethod = 'graph';

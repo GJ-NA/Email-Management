@@ -9,14 +9,14 @@
 ## 主要功能
 
 - Outlook / Hotmail OAuth 账号管理，支持 Microsoft Graph 和 OAuth-IMAP 收件链路
-- Gmail、QQ、163、126、Yahoo、阿里邮箱及自定义 IMAP 账号
+- Gmail、QQ、163、126、Yahoo、阿里邮箱及自定义 IMAP 账号；163 邮箱额外支持 POP3 和客户端授权码
 - 从文本框或 `.txt` 文件批量导入邮箱账号，支持 UTF-8、UTF-16 和 GB18030
 - 支持 `邮箱----密码----client_id----refresh_token`，并自动识别 OAuth 字段反序格式
 - 批量刷新 Token、保存刷新结果和错误记录；支持按天数或 Cron 定时刷新
 - 批量验活：分别检查 OAuth、Graph 收件和可选的 OAuth-IMAP / 普通 IMAP 收件
 - Graph、IMAP、邮箱和账号状态分开显示，可按状态筛选
 - 多级分组、标签、搜索、分页、批量移动、批量导出和单邮箱查看
-- 邮件列表、详情、附件下载、原始邮件查看、已读状态和删除操作
+- 邮件列表、详情、附件下载、原始邮件查看、已读状态和删除操作；163 POP3 仅支持收件箱，不能读取其他文件夹或标记已读
 - Outlook 重新授权、Outlook 上传账号暂存和批量自动授权队列
 - Cloudflare、GPTMail、DuckMail 临时邮箱管理
 - SMTP、Telegram、企业微信邮件转发，支持账号级和全局转发开关、日志与定时检查
@@ -202,11 +202,14 @@ user@outlook.com----x----client_id----refresh_token
 user2@hotmail.com----密码----refresh_token----client_id
 user@qq.com----邮箱密码
 custom@example.com----邮箱密码----imap.example.com----993
+user@163.com----客户端授权码----pop3
 ```
 
 - `x` 表示该账号没有密码，常用于 Outlook OAuth 账号。
 - Outlook OAuth 支持 `client_id` / `refresh_token` 两种末列顺序，导入时会自动识别。
 - 普通 IMAP 使用邮箱、密码；自定义 IMAP 还可以提供服务器地址和端口。
+- 163 POP3 使用邮箱和网页端生成的客户端授权码，导入时末列填写 `pop3`；服务器默认使用 `pop.163.com:995`。
+- POP3 授权码和 IMAP 密码一样保存到账号的 `imap_password` 字段，并在本地加密保存。
 - 网页导入弹窗支持直接选择 `.txt` 文件，也可以继续手动粘贴文本。
 
 ## 验活、刷新与收件
@@ -215,6 +218,7 @@ custom@example.com----邮箱密码----imap.example.com----993
 
 - Outlook OAuth：先检查 Token，再探测 Graph 收件；需要时继续尝试 OAuth-IMAP。
 - 普通 IMAP：使用 IMAP 服务器、端口和密码进行轻量收件探测。
+- 163 POP3：使用 `pop.163.com:995` 和客户端授权码进行收件探测。
 - 界面分别显示 Graph、IMAP 和账号总体状态；某个通道有效不代表其他通道一定有效。
 
 Token 管理支持单个刷新、选中刷新、全部刷新、失败记录和定时刷新。定时策略可以按天数执行，也可以使用 Cron；刷新成功后会保存服务端返回的新 Refresh Token。项目当前没有独立的 Token 剩余寿命通知中心，失效账号主要通过定时刷新结果、验活状态和错误记录发现。

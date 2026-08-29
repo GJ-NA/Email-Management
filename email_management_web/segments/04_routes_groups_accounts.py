@@ -487,11 +487,15 @@ def api_export_group(group_id):
     )
 
 def format_account_export_line(account: Dict[str, Any]) -> str:
-    if account.get('account_type') == 'imap':
+    if normalize_mail_account_type(
+        account.get('account_type'), account.get('provider', ''), account.get('email', '')
+    ) in {'imap', 'pop3'}:
         provider = account.get('provider', 'custom')
         imap_password = account.get('imap_password', '')
         if provider == 'custom':
             return f"{account['email']}----{imap_password}----{account.get('imap_host', '')}----{account.get('imap_port', 993)}"
+        if normalize_mail_account_type(account.get('account_type'), provider, account.get('email', '')) == 'pop3':
+            return f"{account['email']}----{imap_password}----pop3"
         return f"{account['email']}----{imap_password}"
     return f"{account['email']}----{account.get('password', '')}----{account.get('client_id', '')}----{account.get('refresh_token', '')}"
 
@@ -1376,6 +1380,7 @@ def api_add_account():
     group_id = data.get('group_id', 1)
     account_format = data.get('account_format', 'client_id_refresh_token')
     provider = data.get('provider', 'outlook')
+    account_type = normalize_mail_account_type(data.get('account_type'), provider)
     forward_enabled = bool(data.get('forward_enabled', False))
     sort_order = parse_account_sort_order_input(data.get('sort_order')) if 'sort_order' in data else None
     remark = sanitize_input(str(data.get('remark', '') or '').strip(), max_length=500)
@@ -1386,7 +1391,8 @@ def api_add_account():
     fallback_proxy_url_2 = str(data.get('fallback_proxy_url_2', '') or '').strip()
     imap_host = (data.get('imap_host', '') or '').strip()
     try:
-        imap_port = int(data.get('imap_port', 993) or 993)
+        default_port = get_provider_connection_meta(provider, '', account_type).get('port', 993) or 993
+        imap_port = int(data.get('imap_port', default_port) or default_port)
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'IMAP 端口无效'})
     
@@ -1403,7 +1409,9 @@ def api_add_account():
         if not line:
             continue
         
-        parsed = parse_account_import(line, account_format, provider, imap_host, imap_port)
+        parsed = parse_account_import(
+            line, account_format, provider, imap_host, imap_port, account_type
+        )
         if parsed:
             parsed_accounts.append(parsed)
         else:
@@ -1467,7 +1475,7 @@ def api_update_account(account_id):
     password = data['password'] if 'password' in data else current_account.get('password', '')
     client_id = data.get('client_id', '')
     refresh_token = data.get('refresh_token', '')
-    account_type = data.get('account_type', 'outlook')
+    account_type = str(data.get('account_type', 'outlook') or 'outlook').strip().lower()
     provider = data.get('provider', 'outlook')
     authorizationtype_provided = 'authorizationtype' in data or 'authorization_type' in data
     authorizationtype = data.get(
@@ -1495,7 +1503,9 @@ def api_update_account(account_id):
     normalized_tag_ids = normalize_tag_ids_input(data.get('tag_ids', [])) if tag_ids_provided else []
 
     provider_meta = get_provider_meta(provider, email_addr)
-    is_outlook = (account_type == 'outlook') or provider_meta['key'] == 'outlook'
+    account_type = normalize_mail_account_type(account_type, provider_meta['key'], email_addr)
+    is_outlook = account_type == 'outlook' or provider_meta['key'] == 'outlook'
+    is_pop3 = account_type == 'pop3'
     if is_outlook:
         if not email_addr or not client_id or not refresh_token:
             return jsonify({'success': False, 'error': '邮箱、Client ID 和 Refresh Token 不能为空'})
@@ -1507,17 +1517,22 @@ def api_update_account(account_id):
         authorizationtype = authorizationtype if authorizationtype_provided else current_account.get('authorizationtype', '')
     else:
         if not email_addr or not imap_password:
-            return jsonify({'success': False, 'error': '邮箱和 IMAP 密码不能为空'})
+            credential_label = 'POP3 授权码' if is_pop3 else 'IMAP 密码'
+            return jsonify({'success': False, 'error': f'邮箱和{credential_label}不能为空'})
         if provider_meta['key'] == 'custom' and not imap_host:
-            return jsonify({'success': False, 'error': '自定义 IMAP 必须填写服务器地址'})
+            protocol_label = 'POP3' if is_pop3 else 'IMAP'
+            return jsonify({'success': False, 'error': f'自定义 {protocol_label} 必须填写服务器地址'})
         client_id = ''
         refresh_token = ''
-        account_type = 'imap'
+        account_type = 'pop3' if is_pop3 else 'imap'
         provider = provider_meta['key']
         authorizationtype = ''
         if provider != 'custom':
-            imap_host = provider_meta.get('imap_host', '')
-            imap_port = provider_meta.get('imap_port', 993)
+            connection_meta = get_provider_connection_meta(provider, email_addr, account_type)
+            if not connection_meta.get('host'):
+                return jsonify({'success': False, 'error': f'{provider_meta.get("label", provider)}不支持{account_type.upper()}收件协议'})
+            imap_host = connection_meta.get('host', '')
+            imap_port = connection_meta.get('port', 993)
 
     if aliases_provided:
         _, alias_errors = validate_account_aliases(account_id, email_addr, aliases)

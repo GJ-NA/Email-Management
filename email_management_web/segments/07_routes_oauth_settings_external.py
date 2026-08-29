@@ -176,12 +176,12 @@ def api_reauthorize_account(account_id):
             )
         }), 404
 
-    if (account['account_type'] or 'outlook').strip().lower() == 'imap':
+    if (account['account_type'] or 'outlook').strip().lower() != 'outlook':
         return jsonify({
             'success': False,
             'error': build_error_payload(
                 "ACCOUNT_REAUTH_UNSUPPORTED",
-                "IMAP 账号不支持重新授权",
+                "非 Outlook 账号不支持重新授权",
                 "UnsupportedAccountTypeError",
                 400,
                 f"account_id={account_id}"
@@ -1635,12 +1635,12 @@ def _queue_formal_account_for_auto_auth(account_id: int) -> Dict[str, Any]:
         }
 
     account_type = str(account.get('account_type') or 'outlook').lower()
-    if account_type == 'imap':
+    if account_type != 'outlook':
         return {
             'success': False,
             'account_id': account_id,
             'email': str(account.get('email') or ''),
-            'error': 'IMAP 账号不支持加入 Outlook 自动化授权',
+            'error': '非 Outlook 账号不支持加入 Outlook 自动化授权',
             'error_code': 'ACCOUNT_AUTO_AUTH_UNSUPPORTED',
         }
 

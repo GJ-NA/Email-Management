@@ -1,4 +1,4 @@
-        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, applyEmailListCache, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, currentSkip, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getEmailListCacheEntry, getFolderDisplayName, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, invalidateEmailListCache, isNormalMailLocalRetentionEnabled, isTempEmailGroup, isTimeoutAbortError, loadCloudflareGlobalMessages, mergeFolderSummaries, normalizeFolderSummaries, renderCloudflareGlobalFilterBar, renderEmptyStateMarkup, scheduleEmailListLoadCheck, showEmailFetchErrorModal, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
+        /* global EMAIL_DETAIL_REQUEST_TIMEOUT_MS, EMAIL_LIST_REQUEST_TIMEOUT_MS, adjustIframeHeight, applyEmailListCache, closeMobilePanels, closeNavbarActionsMenu, copyCurrentEmail, currentAccount, currentAccountType, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentMethod, currentSkip, emailListCache, escapeHtml, fetchWithTimeout, formatDate, getEmailListCacheEntry, getFolderDisplayName, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, invalidateEmailListCache, isNormalMailLocalRetentionEnabled, isTempEmailGroup, isTimeoutAbortError, loadCloudflareGlobalMessages, mergeFolderSummaries, normalizeFolderSummaries, renderCloudflareGlobalFilterBar, renderEmptyStateMarkup, scheduleEmailListLoadCheck, showEmailFetchErrorModal, showMobileEmailDetail, showToast, updateMobileContext, updateModalBodyState */
 
         // ==================== 邮件相关 ====================
 
@@ -38,7 +38,7 @@
 
         function getRemoteMailboxMethodFallback() {
             const method = String(getNormalMailboxRemoteMethod() || '').trim().toLowerCase();
-            return ['graph', 'imap'].includes(method) ? method : 'graph';
+            return ['graph', 'imap', 'pop3'].includes(method) ? method : 'graph';
         }
 
         function getCurrentEmailRemoteActionMethod(emailItem = {}) {
@@ -48,6 +48,9 @@
             }
             if (idMode === 'uid' || idMode === 'sequence') {
                 return 'imap';
+            }
+            if (idMode === 'uidl' || idMode === 'number') {
+                return 'pop3';
             }
             return getRemoteMailboxMethodFallback();
         }
@@ -108,7 +111,9 @@
         function getEmailListMethodMetadata(data, options = {}) {
             const requestMethod = String(data.request_method || '').trim().toLowerCase();
             const optionMethod = String(options.method || '').trim().toLowerCase();
-            const method = requestMethod || optionMethod || (data.method === 'Graph API' ? 'graph' : 'imap');
+            const method = requestMethod || optionMethod || (
+                data.method === 'Graph API' ? 'graph' : (data.method === 'POP3' ? 'pop3' : 'imap')
+            );
             return {
                 method,
                 remoteMethod: method === 'local' ? getRemoteMailboxMethodFallback() : method,
@@ -1147,6 +1152,10 @@
             const panel = document.getElementById('emailListPanel');
             const selectedEmails = getSelectedEmailItems();
             const unreadSelectedCount = selectedEmails.filter(email => email.is_read === false).length;
+            const isPop3Account = String(currentAccountType || '').toLowerCase() === 'pop3';
+            if (markReadBtn) {
+                markReadBtn.style.display = isPop3Account ? 'none' : '';
+            }
             if (isTempEmailGroup) {
                 bar.style.display = 'none';
                 panel?.classList.remove('batch-toolbar-active');
@@ -1167,7 +1176,7 @@
                         ? '取消全选'
                         : '全选';
                 }
-                if (markReadBtn) {
+                if (markReadBtn && !isPop3Account) {
                     const isMarking = markReadBtn.dataset.loading === 'true';
                     markReadBtn.disabled = unreadSelectedCount === 0 || isMarking;
                     markReadBtn.title = unreadSelectedCount === 0 ? '所选邮件已全部为已读' : '';
@@ -1181,10 +1190,10 @@
                 bar.style.display = 'none';
                 panel?.classList.remove('batch-toolbar-active');
                 if (markReadBtn) {
-                    markReadBtn.disabled = false;
+                    markReadBtn.disabled = isPop3Account;
                     markReadBtn.dataset.loading = 'false';
                     markReadBtn.textContent = '设为已读';
-                    markReadBtn.title = '';
+                    markReadBtn.title = isPop3Account ? 'POP3 不支持标记已读' : '';
                 }
             }
         }

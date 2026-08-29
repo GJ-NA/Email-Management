@@ -1,12 +1,16 @@
-        /* global accountsCache, applyEmailListCache, closeMobilePanels, currentAccount, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentGroupId, currentMethod, currentSkip, emailListCache, getEmailListCacheEntry, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, hideModal, isTempEmailGroup, loadAccountsByGroup, loadEmails, loadGroups, renderEmailList, scheduleEmailListLoadCheck, showEmailList, showToast, updateMobileContext */
+        /* global accountsCache, applyEmailListCache, closeMobilePanels, currentAccount, currentAccountType, currentEmailDetail, currentEmailId, currentEmails, currentFolder, currentGroupId, currentMethod, currentSkip, currentAccountListSource, emailListCache, getEmailListCacheEntry, getNextEmailSkipFromCache, handleApiError, hasMoreEmails, hideModal, isTempEmailGroup, loadAccountsByGroup, loadEmails, loadGroups, renderEmailList, scheduleEmailListLoadCheck, showEmailList, showToast, updateMobileContext */
 
         // ==================== 账号相关 ====================
 
         // 选择账号
         function selectAccount(email) {
+            const sourceAccount = Array.isArray(currentAccountListSource)
+                ? currentAccountListSource.find(account => account.email === email)
+                : null;
+            currentAccountType = String(sourceAccount?.account_type || 'outlook').trim().toLowerCase();
             currentAccount = email;
             isTempEmailGroup = false;
-            currentFolder = 'all'; // 重置为全部邮件
+            currentFolder = currentAccountType === 'pop3' ? 'inbox' : 'all';
             currentEmailId = null;
             currentEmailDetail = null;
 
@@ -28,13 +32,14 @@
             const folderTabs = document.getElementById('folderTabs');
             if (folderTabs) {
                 folderTabs.style.display = 'flex';
-                // 重置为全部邮件
                 document.querySelectorAll('.folder-tab').forEach(tab => {
-                    tab.classList.toggle('active', tab.dataset.folder === 'all');
+                    const supported = currentAccountType !== 'pop3' || tab.dataset.folder === 'inbox';
+                    tab.style.display = supported ? '' : 'none';
+                    tab.classList.toggle('active', tab.dataset.folder === currentFolder);
                 });
             }
 
-            const cache = getEmailListCacheEntry(email, 'all');
+            const cache = getEmailListCacheEntry(email, currentFolder);
 
             // 检查缓存
             if (cache) {
@@ -43,7 +48,7 @@
                 document.getElementById('emailList').innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">📬</div>
-                        <div class="empty-state-text">正在自动刷新全部邮件...</div>
+                        <div class="empty-state-text">正在自动刷新${currentAccountType === 'pop3' ? '收件箱' : '全部邮件'}...</div>
                     </div>
                 `;
                 document.getElementById('emailCount').textContent = '';
@@ -102,6 +107,7 @@
 
                     if (currentAccount === email) {
                         currentAccount = null;
+                        currentAccountType = '';
                         document.getElementById('currentAccount')?.classList.remove('show');
                         document.getElementById('emailList').innerHTML = `
                             <div class="empty-state">

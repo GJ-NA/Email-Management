@@ -1232,6 +1232,9 @@
             if (document.getElementById('importProviderSelect')) {
                 document.getElementById('importProviderSelect').value = 'outlook';
             }
+            if (document.getElementById('importAccountType')) {
+                document.getElementById('importAccountType').value = 'imap';
+            }
             if (document.getElementById('importImapHost')) {
                 document.getElementById('importImapHost').value = '';
             }
@@ -1254,6 +1257,7 @@
             const input = document.getElementById('accountInput').value.trim();
             const groupId = parseInt(document.getElementById('importGroupSelect').value);
             const provider = document.getElementById('importProviderSelect')?.value || 'outlook';
+            const accountType = document.getElementById('importAccountType')?.value || (provider === 'outlook' ? 'outlook' : 'imap');
             const isTempGroup = isTempImportGroup();
             const tempProvider = isTempGroup ? (document.getElementById('importChannelSelect').value || 'gptmail') : '';
             const cloudflareMode = document.getElementById('importCloudflareImportMode')?.value || 'auto';
@@ -1386,6 +1390,7 @@
                             account_string: input,
                             group_id: groupId,
                             provider,
+                            account_type: accountType,
                             imap_host: imapHost,
                             imap_port: Number.isFinite(imapPort) ? imapPort : 993,
                             forward_enabled: forwardEnabled,
@@ -1436,6 +1441,7 @@
                     document.getElementById('editClientId').value = acc.client_id || '';
                     document.getElementById('editAuthorizationType').value = acc.authorizationtype || '';
                     document.getElementById('editRefreshToken').value = acc.refresh_token || '';
+                    document.getElementById('editAccountType').value = acc.account_type || 'imap';
                     resetEditSecretInput('editImapPassword', 'revealEditImapPasswordBtn', !!acc.has_imap_password, acc.imap_password || '', '');
                     document.getElementById('editImapHost').value = acc.imap_host || '';
                     document.getElementById('editImapPort').value = acc.imap_port || 993;
@@ -1469,6 +1475,7 @@
             const newGroupId = parseInt(document.getElementById('editGroupSelect').value);
             const provider = document.getElementById('editProviderSelect')?.value || 'outlook';
             const isOutlook = provider === 'outlook';
+            const accountType = document.getElementById('editAccountType')?.value || (isOutlook ? 'outlook' : 'imap');
             const authorizationType = document.getElementById('editAuthorizationType')?.value || '';
             const imapPort = parseInt(document.getElementById('editImapPort')?.value || '993', 10);
             const sortOrder = parseInt(document.getElementById('editSortOrder')?.value || '0', 10);
@@ -1485,7 +1492,7 @@
                 client_id: document.getElementById('editClientId').value.trim(),
                 authorizationtype: isOutlook ? authorizationType : '',
                 refresh_token: document.getElementById('editRefreshToken').value.trim(),
-                account_type: isOutlook ? 'outlook' : 'imap',
+                account_type: isOutlook ? 'outlook' : accountType,
                 provider,
                 imap_host: document.getElementById('editImapHost')?.value.trim() || '',
                 imap_port: Number.isFinite(imapPort) ? imapPort : 993,
@@ -1517,7 +1524,7 @@
                 }
             } else {
                 if (!data.email || (!imapPasswordValue && !imapPasswordLockedWithSavedValue)) {
-                    showToast('邮箱和 IMAP 密码不能为空', 'error');
+                    showToast(`邮箱和${accountType === 'pop3' ? 'POP3 授权码' : 'IMAP 密码'}不能为空`, 'error');
                     return;
                 }
                 if (provider === 'custom' && !data.imap_host) {

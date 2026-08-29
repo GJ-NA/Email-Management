@@ -862,7 +862,7 @@ def persist_account_authorization_type(account: Any, authorization_type: Any,
     """保存 Outlook 最近一次成功的授权通道；失败不影响当前收件结果。"""
     account_id = get_account_field(account, 'id', None)
     normalized_type = normalize_account_authorization_type(authorization_type)
-    if not account_id or str(get_account_field(account, 'account_type', 'outlook')).strip().lower() == 'imap':
+    if not account_id or str(get_account_field(account, 'account_type', 'outlook')).strip().lower() != 'outlook':
         return False
 
     owned_db = False
@@ -1123,9 +1123,9 @@ def resolve_account_record(row: sqlite3.Row, matched_alias: str = '',
         except Exception:
             pass
     account['provider'] = normalize_provider(account.get('provider'), account.get('email', ''))
-    account['account_type'] = account.get('account_type') or get_provider_meta(
-        account['provider'], account.get('email', '')
-    ).get('account_type', 'outlook')
+    account['account_type'] = normalize_mail_account_type(
+        account.get('account_type'), account['provider'], account.get('email', '')
+    )
     account['aliases'] = list(aliases) if aliases is not None else get_account_aliases(account['id'])
     account['alias_count'] = len(account['aliases'])
     account['requested_email'] = matched_alias or account.get('email', '')
@@ -1420,6 +1420,9 @@ def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optiona
                               include_imap_meta: bool = True) -> Dict[str, Any]:
     """序列化账号摘要，默认隐藏敏感字段"""
     client_id = account.get('client_id') or ''
+    account_type = normalize_mail_account_type(
+        account.get('account_type'), account.get('provider', ''), account.get('email', '')
+    )
     refresh_state = resolve_account_refresh_state(account, last_refresh_log)
     payload = {
         'id': account['id'],
@@ -1432,8 +1435,10 @@ def serialize_account_summary(account: Dict[str, Any], last_refresh_log: Optiona
         'sort_order': normalize_account_sort_order(account.get('sort_order', 0)),
         'remark': account.get('remark', ''),
         'status': account.get('status', 'active'),
-        'account_type': account.get('account_type', 'outlook'),
+        'account_type': account_type,
         'provider': account.get('provider', 'outlook'),
+        'mail_protocol': account_type,
+        'supports_mark_read': account_type != 'pop3',
         'authorizationtype': normalize_account_authorization_type(account.get('authorizationtype')),
         'forward_enabled': bool(account.get('forward_enabled')),
         'proxy_override_enabled': account_has_proxy_override(account),
@@ -1478,7 +1483,7 @@ ACCOUNT_INSERT_SQL = '''
 
 def build_account_insert_values(email_addr: str, password: str, client_id: str = '', refresh_token: str = '',
                                 group_id: int = 1, remark: str = '', account_type: str = 'outlook',
-                                provider: str = 'outlook', imap_host: str = '', imap_port: int = 993,
+                                provider: str = 'outlook', imap_host: str = '', imap_port: Optional[int] = None,
                                 imap_password: str = '', forward_enabled: bool = False,
                                 sort_order: Optional[int] = None, status: str = 'active',
                                 proxy_url: str = '', fallback_proxy_url_1: str = '',
@@ -1488,9 +1493,19 @@ def build_account_insert_values(email_addr: str, password: str, client_id: str =
     encrypted_imap_password = encrypt_data(imap_password) if imap_password else imap_password
     provider_meta = get_provider_meta(provider, email_addr)
     normalized_provider = provider_meta['key']
-    normalized_account_type = account_type or provider_meta.get('account_type', 'outlook')
-    normalized_imap_host = imap_host or provider_meta.get('imap_host', '')
-    normalized_imap_port = int(imap_port or provider_meta.get('imap_port', 993) or 993)
+    normalized_account_type = normalize_mail_account_type(
+        account_type or provider_meta.get('account_type', 'outlook'),
+        normalized_provider,
+        email_addr,
+    )
+    connection_meta = get_provider_connection_meta(
+        normalized_provider, email_addr, normalized_account_type
+    )
+    normalized_imap_host = imap_host or connection_meta.get('host', '')
+    provider_default_port = int(connection_meta.get('port', 993) or 993)
+    normalized_imap_port = int(imap_port or provider_default_port)
+    if normalized_account_type == 'pop3' and normalized_imap_port == 993 and provider_default_port != 993:
+        normalized_imap_port = provider_default_port
     normalized_sort_order = parse_account_sort_order_input(sort_order)
     normalized_status = normalize_account_status(status)
 
@@ -1518,7 +1533,7 @@ def build_account_insert_values(email_addr: str, password: str, client_id: str =
 
 def add_account(email_addr: str, password: str, client_id: str = '', refresh_token: str = '',
                 group_id: int = 1, remark: str = '', account_type: str = 'outlook',
-                provider: str = 'outlook', imap_host: str = '', imap_port: int = 993,
+                provider: str = 'outlook', imap_host: str = '', imap_port: Optional[int] = None,
                 imap_password: str = '', forward_enabled: bool = False,
                 sort_order: Optional[int] = None, status: str = 'active',
                 proxy_url: str = '', fallback_proxy_url_1: str = '',
@@ -2101,7 +2116,7 @@ def apply_account_tag_ids(account_id: int, tag_ids: Any = None, db=None) -> int:
 def update_account(account_id: int, email_addr: str, password: str, client_id: str,
                    refresh_token: str, group_id: int, sort_order: Optional[int], remark: str, status: str,
                    account_type: str = 'outlook', provider: str = 'outlook',
-                   imap_host: str = '', imap_port: int = 993, imap_password: str = '',
+                   imap_host: str = '', imap_port: Optional[int] = None, imap_password: str = '',
                    forward_enabled: bool = False, proxy_url: str = '',
                    fallback_proxy_url_1: str = '', fallback_proxy_url_2: str = '',
                    authorizationtype: Any = None) -> bool:
@@ -2116,6 +2131,19 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
         normalized_proxy_url = str(proxy_url or '').strip()
         normalized_fallback_proxy_url_1 = str(fallback_proxy_url_1 or '').strip()
         normalized_fallback_proxy_url_2 = str(fallback_proxy_url_2 or '').strip()
+        provider_meta = get_provider_meta(provider, email_addr)
+        normalized_provider = provider_meta['key']
+        normalized_account_type = normalize_mail_account_type(
+            account_type, normalized_provider, email_addr
+        )
+        connection_meta = get_provider_connection_meta(
+            normalized_provider, email_addr, normalized_account_type
+        )
+        normalized_imap_host = str(imap_host or connection_meta.get('host', '') or '').strip()
+        provider_default_port = int(connection_meta.get('port', 993) or 993)
+        normalized_imap_port = int(imap_port or provider_default_port)
+        if normalized_account_type == 'pop3' and normalized_imap_port == 993 and provider_default_port != 993:
+            normalized_imap_port = provider_default_port
 
         current_account = db.execute(
             'SELECT forward_enabled, forward_last_checked_at, authorizationtype FROM accounts WHERE id = ?',
@@ -2126,7 +2154,7 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
         )
         if authorizationtype is not None:
             authorization_type = normalize_account_authorization_type(authorizationtype)
-        if str(account_type or '').strip().lower() == 'imap':
+        if normalized_account_type in {'imap', 'pop3'}:
             authorization_type = ''
         should_init_forward_cursor = bool(
             forward_enabled and current_account and not current_account['forward_enabled']
@@ -2145,7 +2173,8 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
             ''', (
                 email_addr, encrypted_password, client_id, encrypted_refresh_token, group_id, normalized_sort_order,
                 remark, status,
-                account_type, provider, authorization_type, imap_host, imap_port, encrypted_imap_password, 1,
+                 normalized_account_type, normalized_provider, authorization_type,
+                 normalized_imap_host, normalized_imap_port, encrypted_imap_password, 1,
                 datetime.now(timezone.utc).isoformat(), normalized_proxy_url,
                 normalized_fallback_proxy_url_1, normalized_fallback_proxy_url_2, account_id
             ))
@@ -2162,7 +2191,8 @@ def update_account(account_id: int, email_addr: str, password: str, client_id: s
             ''', (
                 email_addr, encrypted_password, client_id, encrypted_refresh_token, group_id, normalized_sort_order,
                 remark, status,
-                account_type, provider, authorization_type, imap_host, imap_port, encrypted_imap_password, 1 if forward_enabled else 0,
+                 normalized_account_type, normalized_provider, authorization_type,
+                 normalized_imap_host, normalized_imap_port, encrypted_imap_password, 1 if forward_enabled else 0,
                 normalized_proxy_url, normalized_fallback_proxy_url_1, normalized_fallback_proxy_url_2, account_id
             ))
         db.commit()
@@ -3768,7 +3798,8 @@ def parse_outlook_account_string(account_str: str, account_format: str = 'client
     }
 
 
-def parse_imap_account_string(account_str: str, provider: str = 'custom', imap_host: str = '', imap_port: int = 993) -> Optional[Dict]:
+def parse_imap_account_string(account_str: str, provider: str = 'custom', imap_host: str = '', imap_port: int = 993,
+                              account_type: str = 'imap') -> Optional[Dict]:
     parts = [part.strip() for part in account_str.strip().split('----')]
     if len(parts) < 2 or not parts[0]:
         return None
@@ -3777,6 +3808,10 @@ def parse_imap_account_string(account_str: str, provider: str = 'custom', imap_h
     password = parts[1]
     provider_meta = get_provider_meta(provider, email_addr)
     provider_key = provider_meta['key']
+    normalized_account_type = normalize_mail_account_type(account_type, provider_key, email_addr)
+
+    if len(parts) >= 3 and parts[2].strip().lower() in {'imap', 'pop3'}:
+        normalized_account_type = normalize_mail_account_type(parts[2], provider_key, email_addr)
 
     if provider_key == 'custom':
         if len(parts) >= 4:
@@ -3788,8 +3823,11 @@ def parse_imap_account_string(account_str: str, provider: str = 'custom', imap_h
         if not imap_host:
             return None
     else:
-        imap_host = provider_meta.get('imap_host', '')
-        imap_port = int(provider_meta.get('imap_port', 993) or 993)
+        connection_meta = get_provider_connection_meta(
+            provider_key, email_addr, normalized_account_type
+        )
+        imap_host = connection_meta.get('host', '')
+        imap_port = int(connection_meta.get('port', 993) or 993)
 
     if not password or not imap_host:
         return None
@@ -3800,7 +3838,7 @@ def parse_imap_account_string(account_str: str, provider: str = 'custom', imap_h
         'client_id': '',
         'refresh_token': '',
         'provider': provider_key,
-        'account_type': 'imap',
+        'account_type': normalized_account_type,
         'imap_host': imap_host,
         'imap_port': int(imap_port or 993),
         'imap_password': password,
@@ -3808,8 +3846,12 @@ def parse_imap_account_string(account_str: str, provider: str = 'custom', imap_h
 
 
 def parse_account_import(account_str: str, account_format: str = 'client_id_refresh_token',
-                         provider: str = 'outlook', imap_host: str = '', imap_port: int = 993) -> Optional[Dict]:
+                         provider: str = 'outlook', imap_host: str = '', imap_port: int = 993,
+                         account_type: str = '') -> Optional[Dict]:
     provider_key = normalize_provider(provider, account_str.split('----', 1)[0].strip() if account_str else '')
     if provider_key == 'outlook':
         return parse_outlook_account_string(account_str, account_format)
-    return parse_imap_account_string(account_str, provider_key, imap_host, imap_port)
+    requested_type = account_type or get_provider_meta(provider_key).get('account_type', 'imap')
+    return parse_imap_account_string(
+        account_str, provider_key, imap_host, imap_port, requested_type
+    )

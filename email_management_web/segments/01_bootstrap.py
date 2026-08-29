@@ -9,6 +9,7 @@ Email Management Web 应用
 
 import email
 import imaplib
+import poplib
 import logging
 import sqlite3
 import os
@@ -590,6 +591,9 @@ MAIL_PROVIDERS = {
         "label": "163邮箱",
         "imap_host": "imap.163.com",
         "imap_port": 993,
+        "pop3_host": "pop.163.com",
+        "pop3_port": 995,
+        "supports_pop3": True,
         "account_type": "imap",
     },
     "126": {
@@ -808,6 +812,48 @@ def get_provider_meta(provider: str, email_addr: str = '') -> Dict[str, Any]:
     meta = dict(MAIL_PROVIDERS.get(provider_key, MAIL_PROVIDERS['custom']))
     meta['key'] = provider_key
     return meta
+
+
+SUPPORTED_ACCOUNT_TYPES = {'outlook', 'imap', 'pop3'}
+
+
+def normalize_mail_account_type(account_type: Any, provider: str = '', email_addr: str = '') -> str:
+    candidate = str(account_type or '').strip().lower()
+    if candidate in {'pop', 'pop3'}:
+        return 'pop3'
+    if candidate == 'imap':
+        return 'imap'
+    if candidate == 'outlook':
+        return 'outlook'
+    provider_default = str(
+        get_provider_meta(provider, email_addr).get('account_type', 'outlook') or 'outlook'
+    ).strip().lower()
+    return provider_default if provider_default in SUPPORTED_ACCOUNT_TYPES else 'outlook'
+
+
+def get_provider_connection_meta(provider: str, email_addr: str = '', account_type: str = 'imap') -> Dict[str, Any]:
+    provider_meta = get_provider_meta(provider, email_addr)
+    normalized_type = normalize_mail_account_type(account_type, provider_meta['key'], email_addr)
+    if normalized_type == 'pop3':
+        return {
+            'host': str(provider_meta.get('pop3_host') or '').strip(),
+            'port': int(provider_meta.get('pop3_port') or 995),
+        }
+    return {
+        'host': str(provider_meta.get('imap_host') or '').strip(),
+        'port': int(provider_meta.get('imap_port') or 993),
+    }
+
+
+def account_uses_pop3(account: Any) -> bool:
+    if isinstance(account, dict):
+        value = account.get('account_type')
+    else:
+        try:
+            value = account['account_type']
+        except (KeyError, IndexError, TypeError, AttributeError):
+            value = ''
+    return normalize_mail_account_type(value) == 'pop3'
 
 
 def get_imap_folder_candidates(provider: str, folder: str) -> List[str]:
