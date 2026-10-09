@@ -6,6 +6,7 @@ import ssl
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from email_management_web.mail_datetime import parse_mail_datetime
+from email_management_web.mail_transport import create_mail_ssl_context
 
 if TYPE_CHECKING:
     # These segmented files are executed into the shared `email_management`
@@ -456,13 +457,10 @@ def get_with_proxy_fallback(url: str, *, proxy_url: str = None,
     )
 
 
-@contextmanager
-def proxy_socket_context(proxy_url: str):
-    if not proxy_url or not socks:
-        log_outbound_proxy_usage('IMAP socket', proxy_url or '')
-        yield
-        return
-
+def create_mail_proxy_socket(host: str, port: int, timeout: float, proxy_url: str):
+    """Create a socket with its own proxy settings, never process-wide defaults."""
+    if not socks:
+        raise RuntimeError('PySocks is required for mail proxy connections')
     parsed = urlparse(proxy_url)
     scheme = (parsed.scheme or '').lower()
     proxy_type_map = {
@@ -474,9 +472,7 @@ def proxy_socket_context(proxy_url: str):
     }
     proxy_type = proxy_type_map.get(scheme)
     if not proxy_type or not parsed.hostname or not parsed.port:
-        log_outbound_proxy_usage('IMAP socket(无效代理,回退直连)', proxy_url)
-        yield
-        return
+        raise ValueError('Invalid mail proxy URL')
 
     username = unquote(parsed.username) if parsed.username else None
     # 区分「无密码字段」与「空密码」：password 可能是 ''
@@ -485,22 +481,42 @@ def proxy_socket_context(proxy_url: str):
     rdns = scheme == 'socks5h'
     log_outbound_proxy_usage('IMAP socket', proxy_url)
 
-    with proxy_socket_lock:
-        original_socket = socket.socket
-        try:
-            socks.set_default_proxy(
-                proxy_type,
-                parsed.hostname,
-                parsed.port,
-                username=username,
-                password=password,
-                rdns=rdns
-            )
-            socket.socket = socks.socksocket
-            yield
-        finally:
-            socket.socket = original_socket
-            socks.set_default_proxy()
+    return socks.create_connection(
+        (host, port), timeout=timeout, proxy_type=proxy_type,
+        proxy_addr=parsed.hostname, proxy_port=parsed.port, proxy_rdns=rdns,
+        proxy_username=username, proxy_password=password,
+    )
+
+
+def wrap_mail_proxy_socket(host, port, timeout, proxy_url, context):
+    sock = create_mail_proxy_socket(host, port, timeout, proxy_url)
+    try:
+        return context.wrap_socket(sock, server_hostname=host)
+    except Exception:
+        sock.close()
+        raise
+
+
+class ProxyIMAP4SSL(imaplib.IMAP4_SSL):
+    def __init__(self, host, port, *, proxy_url, ssl_context, timeout):
+        self.proxy_url = proxy_url
+        super().__init__(host, port, ssl_context=ssl_context, timeout=timeout)
+
+    def _create_socket(self, timeout):
+        return wrap_mail_proxy_socket(
+            self.host, self.port, timeout, self.proxy_url, self.ssl_context
+        )
+
+
+class ProxyPOP3SSL(poplib.POP3_SSL):
+    def __init__(self, host, port, *, proxy_url, context, timeout):
+        self.proxy_url = proxy_url
+        super().__init__(host, port, context=context, timeout=timeout)
+
+    def _create_socket(self, timeout):
+        return wrap_mail_proxy_socket(
+            self.host, self.port, timeout, self.proxy_url, self.context
+        )
 
 
 def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url: str = None,
@@ -1590,14 +1606,6 @@ def get_raw_email_imap_generic(email_addr: str, imap_password: str, imap_host: s
                 pass
 
 
-def create_mail_ssl_context():
-    """创建与常见移动端邮件客户端一致的免证书校验 TLS 上下文。"""
-    context = ssl.create_default_context()
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    return context
-
-
 def build_email_detail_from_message(msg, message_id: str, date_value: str = '') -> Dict[str, Any]:
     body_text, body_html = extract_text_and_html(msg)
     return {
@@ -1623,22 +1631,12 @@ def create_imap_connection(imap_host: str, imap_port: int = 993, proxy_url: str 
     if not host:
         raise ValueError('IMAP host 不能为空')
     ssl_context = create_mail_ssl_context()
-    try:
-        with proxy_socket_context(proxy_url):
-            return imaplib.IMAP4_SSL(
-                host,
-                port,
-                timeout=IMAP_TIMEOUT,
-                ssl_context=ssl_context,
-            )
-    except TypeError:
-        old_timeout = socket.getdefaulttimeout()
-        socket.setdefaulttimeout(IMAP_TIMEOUT)
-        try:
-            with proxy_socket_context(proxy_url):
-                return imaplib.IMAP4_SSL(host, port, ssl_context=ssl_context)
-        finally:
-            socket.setdefaulttimeout(old_timeout)
+    if proxy_url and proxy_url not in (DIRECT_PROXY_SENTINEL, 'direct'):
+        return ProxyIMAP4SSL(
+            host, port, proxy_url=proxy_url, ssl_context=ssl_context, timeout=IMAP_TIMEOUT
+        )
+    log_outbound_proxy_usage('IMAP socket', '')
+    return imaplib.IMAP4_SSL(host, port, timeout=IMAP_TIMEOUT, ssl_context=ssl_context)
 
 
 def create_pop3_connection(pop3_host: str, pop3_port: int = 995, proxy_url: str = ''):
@@ -1647,22 +1645,12 @@ def create_pop3_connection(pop3_host: str, pop3_port: int = 995, proxy_url: str 
     if not host:
         raise ValueError('POP3 host 不能为空')
     ssl_context = create_mail_ssl_context()
-    try:
-        with proxy_socket_context(proxy_url):
-            return poplib.POP3_SSL(
-                host,
-                port,
-                timeout=IMAP_TIMEOUT,
-                context=ssl_context,
-            )
-    except TypeError:
-        old_timeout = socket.getdefaulttimeout()
-        socket.setdefaulttimeout(IMAP_TIMEOUT)
-        try:
-            with proxy_socket_context(proxy_url):
-                return poplib.POP3_SSL(host, port, context=ssl_context)
-        finally:
-            socket.setdefaulttimeout(old_timeout)
+    if proxy_url and proxy_url not in (DIRECT_PROXY_SENTINEL, 'direct'):
+        return ProxyPOP3SSL(
+            host, port, proxy_url=proxy_url, context=ssl_context, timeout=IMAP_TIMEOUT
+        )
+    log_outbound_proxy_usage('POP3 socket', '')
+    return poplib.POP3_SSL(host, port, timeout=IMAP_TIMEOUT, context=ssl_context)
 
 
 def pop3_response_text(response: Any) -> str:

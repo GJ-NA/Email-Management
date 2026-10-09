@@ -16,9 +16,7 @@ def login():
     if request.method == 'POST':
         try:
             # 获取客户端 IP
-            client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-            if client_ip:
-                client_ip = client_ip.split(',')[0].strip()
+            client_ip = request.remote_addr
 
             # 检查速率限制
             allowed, remaining_time = check_rate_limit(client_ip)
@@ -96,9 +94,7 @@ def normalize_extension_next_path(next_path: str) -> str:
 @csrf_exempt
 def api_extension_login():
     """浏览器扩展密码登录：返回一次性 Web 会话跳转地址。"""
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    if client_ip:
-        client_ip = client_ip.split(',')[0].strip()
+    client_ip = request.remote_addr
 
     allowed, remaining_time = check_rate_limit(client_ip)
     if not allowed:
@@ -656,7 +652,7 @@ def api_export_selected_accounts():
         return jsonify({'success': False, 'error': '验证已过期，请重新验证', 'need_verify': True}), 401
     
     # 可选：验证 IP 一致性（增强安全性）
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    client_ip = request.remote_addr
     if client_ip:
         client_ip = client_ip.split(',')[0].strip()
     # 注意：由于 Cloudflare 可能使用不同边缘节点，IP 可能变化，暂不强制验证
@@ -741,7 +737,7 @@ def api_generate_export_verify_token():
     verify_token = secrets.token_urlsafe(32)
     
     # 使用 IP + 时间戳 作为用户标识（因为 session cookie 可能不可靠）
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    client_ip = request.remote_addr
     if client_ip:
         client_ip = client_ip.split(',')[0].strip()
     

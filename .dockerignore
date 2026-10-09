@@ -9,9 +9,25 @@ dist/
 build/
 
 # 虚拟环境
+.venv/
+.venv.*/
 venv/
 env/
 ENV/
+
+# Local configuration, credentials, data, and test output
+.env
+.env.*
+!.env.example
+runtime/
+data/
+secret_key.txt
+admin_password.txt
+.test_tmp/
+.tmp/
+.pytest_cache/
+.ruff_cache/
+EmailManagement.exe
 
 # IDE
 .vscode/

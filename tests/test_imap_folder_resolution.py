@@ -10,8 +10,9 @@ from unittest.mock import patch
 
 
 os.environ.setdefault('SECRET_KEY', 'test-secret-key')
-_temp_dir = tempfile.mkdtemp(prefix='Email-Management-tests-')
-os.environ['DATABASE_PATH'] = os.path.join(_temp_dir, 'test.db')
+if 'DATABASE_PATH' not in os.environ:
+    _temp_dir = tempfile.mkdtemp(prefix='Email-Management-tests-')
+    os.environ['DATABASE_PATH'] = os.path.join(_temp_dir, 'test.db')
 
 email_management = importlib.import_module('email_management')
 
@@ -75,7 +76,7 @@ class ImapFolderResolutionTests(unittest.TestCase):
         self.assertEqual(result['status'], 'OK')
         self.assertEqual(mail.command_events, ['login', 'xatom'])
 
-    def test_imap_connections_accept_all_server_certificates(self):
+    def test_imap_connections_verify_server_certificates(self):
         with patch.object(
             email_management.imaplib,
             'IMAP4_SSL',
@@ -85,8 +86,8 @@ class ImapFolderResolutionTests(unittest.TestCase):
 
         imap_factory.assert_called_once()
         ssl_context = imap_factory.call_args.kwargs['ssl_context']
-        self.assertFalse(ssl_context.check_hostname)
-        self.assertEqual(ssl_context.verify_mode, email_management.ssl.CERT_NONE)
+        self.assertTrue(ssl_context.check_hostname)
+        self.assertEqual(ssl_context.verify_mode, email_management.ssl.CERT_REQUIRED)
 
     def test_custom_imap_id_stays_after_login(self):
         mail = FakeMail()

@@ -25,6 +25,7 @@ import bcrypt
 import base64
 import html
 import socket
+import ipaddress
 import shutil
 import subprocess
 import tempfile
@@ -117,7 +118,31 @@ LOG_LEVEL = configure_app_logging(app)
 # 信任代理头（适用于反向代理环境）
 # 这确保 Flask 正确识别 HTTPS 请求
 from werkzeug.middleware.proxy_fix import ProxyFix
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+class TrustedProxyFix:
+    """Only accept forwarded headers from explicitly trusted immediate peers."""
+
+    def __init__(self, application, trusted_proxies):
+        self.application = application
+        self.networks = tuple(
+            ipaddress.ip_network(value.strip(), strict=False)
+            for value in trusted_proxies.split(',') if value.strip()
+        )
+        self.proxy_application = ProxyFix(
+            application, x_for=1, x_proto=1, x_host=1, x_prefix=1
+        )
+
+    def __call__(self, environ, start_response):
+        try:
+            peer = ipaddress.ip_address(environ.get('REMOTE_ADDR', ''))
+        except ValueError:
+            peer = None
+        if peer is not None and any(peer in network for network in self.networks):
+            return self.proxy_application(environ, start_response)
+        return self.application(environ, start_response)
+
+
+app.wsgi_app = TrustedProxyFix(app.wsgi_app, os.getenv('TRUSTED_PROXY_IPS', ''))
 
 # CORS 支持：仅对外部 API (/api/external/*) 启用跨域访问
 @app.after_request
@@ -134,7 +159,6 @@ scheduler_lock = threading.Lock()
 token_refresh_run_lock = threading.Lock()
 webdav_backup_run_lock = threading.Lock()
 forwarding_run_lock = threading.Lock()
-proxy_socket_lock = threading.RLock()
 
 
 # 初始化 CSRF 保护（如果可用）
@@ -2547,6 +2571,15 @@ def migrate_sensitive_data(conn):
     """迁移现有明文敏感数据为加密数据"""
     cursor = conn.cursor()
 
+    row = cursor.execute(
+        "SELECT value FROM settings WHERE key = 'external_api_key'"
+    ).fetchone()
+    if row and row[0] and not is_encrypted(row[0]):
+        cursor.execute(
+            "UPDATE settings SET value = ? WHERE key = 'external_api_key'",
+            (encrypt_data(row[0]),),
+        )
+
     # 获取所有账号
     cursor.execute('SELECT id, password, refresh_token FROM accounts')
     accounts = cursor.fetchall()
@@ -3479,8 +3512,17 @@ def get_gptmail_api_key() -> str:
 
 
 def get_external_api_key() -> str:
-    """获取对外 API Key（从数据库读取，明文存储）"""
-    return get_setting('external_api_key', '')
+    """Decrypt the API key; legacy plaintext remains readable during migration."""
+    raw_value = get_setting('external_api_key', '')
+    if not raw_value:
+        return ''
+    try:
+        return decrypt_data(raw_value)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            'External API key could not be decrypted; disabling external API access'
+        )
+        return ''
 
 
 def get_duckmail_base_url() -> str:

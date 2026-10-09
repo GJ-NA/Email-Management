@@ -239,10 +239,22 @@ Token 管理支持单个刷新、选中刷新、全部刷新、失败记录和�
 
 ## 测试
 
+开发依赖安装到项目虚拟环境（包含 pytest 和打包工具）：
+
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\python.exe -m pip check
+```
+
 ```powershell
 .venv\Scripts\python.exe -m pytest -q
+.venv\Scripts\python.exe -m pytest --full -q
 .venv\Scripts\python.exe -m compileall -q email_management.py email_management_web mail_reader.py scripts tests
 ```
+
+默认命令只运行快速 smoke 回归；需要运行完整集成和专项测试时加上 `--full`。发布前应运行完整测试。单独运行某个专项文件时可以显式指定路径，例如 `python -m pytest tests/test_project_runtime.py -q`。测试使用 `.test_tmp/` 下的独立数据库，不使用本地 `.env` 中的业务数据库。
+
+虚拟环境不能直接从旧目录复制使用，也不应在基础 Python 升级后继续沿用旧版原生扩展。遇到版本不匹配时，保留旧 `.venv` 作为备份，再用选定的 Python 重新创建环境并安装 `requirements-dev.txt`。
 
 检查全部前端 JavaScript：
 

@@ -7,11 +7,12 @@ from unittest.mock import patch
 
 
 os.environ.setdefault('SECRET_KEY', 'test-secret-key')
-_test_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.test_tmp')
-os.makedirs(_test_root, exist_ok=True)
-_temp_dir = os.path.join(_test_root, 'graph_oauth')
-os.makedirs(_temp_dir, exist_ok=True)
-os.environ['DATABASE_PATH'] = os.path.join(_temp_dir, 'test.db')
+if 'DATABASE_PATH' not in os.environ:
+    _test_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.test_tmp')
+    os.makedirs(_test_root, exist_ok=True)
+    _temp_dir = os.path.join(_test_root, 'graph_oauth')
+    os.makedirs(_temp_dir, exist_ok=True)
+    os.environ['DATABASE_PATH'] = os.path.join(_temp_dir, 'test.db')
 
 email_management = importlib.import_module('email_management')
 

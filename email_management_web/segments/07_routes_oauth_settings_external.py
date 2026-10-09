@@ -876,12 +876,12 @@ def api_update_settings():
     if 'external_api_key' in data:
         new_ext_key = data['external_api_key'].strip()
         if new_ext_key:
-            if set_setting('external_api_key', new_ext_key):
+            if set_setting_encrypted('external_api_key', new_ext_key):
                 updated.append('对外 API Key')
             else:
                 errors.append('更新对外 API Key 失败')
         else:
-            if set_setting('external_api_key', ''):
+            if set_setting_encrypted('external_api_key', ''):
                 updated.append('对外 API Key（已清空）')
 
     # 更新 DuckMail 设置

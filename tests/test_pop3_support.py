@@ -98,7 +98,7 @@ def build_message(subject='POP3 subject', body='POP3 body', attachment=False):
 
 
 class Pop3SupportTests(unittest.TestCase):
-    def test_pop3_connections_accept_all_server_certificates(self):
+    def test_pop3_connections_verify_server_certificates(self):
         with patch.object(
             email_management.poplib,
             'POP3_SSL',
@@ -108,8 +108,8 @@ class Pop3SupportTests(unittest.TestCase):
 
         pop3_factory.assert_called_once()
         ssl_context = pop3_factory.call_args.kwargs['context']
-        self.assertFalse(ssl_context.check_hostname)
-        self.assertEqual(ssl_context.verify_mode, email_management.ssl.CERT_NONE)
+        self.assertTrue(ssl_context.check_hostname)
+        self.assertEqual(ssl_context.verify_mode, email_management.ssl.CERT_REQUIRED)
 
     def test_163_pop3_provider_uses_host_and_port_995(self):
         connection = email_management.get_provider_connection_meta(

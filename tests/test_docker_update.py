@@ -12,7 +12,7 @@ ROOT_DIR = pathlib.Path(__file__).resolve().parents[1]
 os.environ.setdefault('SECRET_KEY', 'test-secret-key')
 temp_dir = ROOT_DIR / '.tmp' / f'docker-update-tests-{os.getpid()}'
 temp_dir.mkdir(parents=True, exist_ok=True)
-os.environ['DATABASE_PATH'] = str(temp_dir / 'test.db')
+os.environ.setdefault('DATABASE_PATH', str(temp_dir / 'test.db'))
 os.environ['DOCKER_UPDATE_STATE_FILE'] = str(temp_dir / 'docker_update_state.json')
 
 email_management = importlib.import_module('email_management')

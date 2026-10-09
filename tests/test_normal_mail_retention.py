@@ -692,7 +692,7 @@ class NormalMailRetentionTests(unittest.TestCase):
     def test_delete_emails_imap_uses_imap_oauth_token_and_expunges(self):
         with patch.object(email_management, 'get_access_token_graph') as graph_token_mock, \
              patch.object(email_management, 'get_access_token_imap', return_value='imap-token') as imap_token_mock, \
-             patch.object(email_management.imaplib, 'IMAP4_SSL') as imap_mock, \
+             patch.object(email_management, 'ProxyIMAP4SSL') as imap_mock, \
              patch.object(email_management, 'resolve_imap_folder', return_value=('INBOX', {})) as resolve_folder_mock, \
              patch.object(
                  email_management,
@@ -728,6 +728,7 @@ class NormalMailRetentionTests(unittest.TestCase):
         imap_mock.assert_called_once_with(
             'imap.example.com',
             email_management.IMAP_PORT,
+            proxy_url='socks5://proxy.example:1080',
             timeout=email_management.IMAP_TIMEOUT,
             ssl_context=ANY,
         )

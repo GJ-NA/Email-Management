@@ -217,6 +217,10 @@ docker run -d \
 
 ### 使用 Nginx + HTTPS
 
+应用默认忽略 `X-Forwarded-*`。使用反向代理时，在应用环境中设置 `TRUSTED_PROXY_IPS=127.0.0.1,::1`（适用于同机代理）；Docker 或独立代理请填写应用实际看到的代理出口 IP/CIDR。只信任代理，不要填写客户端网段或 `0.0.0.0/0`，并限制应用端口只允许代理访问。当前按一层可信代理处理，使用转发链最右侧地址；多层代理应先在入口代理中整理客户端地址。配置变更需要重启应用。
+
+应用的 IMAP/POP3 默认验证服务器证书和主机名。自建邮箱使用私有 CA 时，设置 `MAIL_TLS_CA_FILE` 指向可信 PEM CA 文件（Docker 中须挂载到容器）；无效 CA 或证书校验失败不会降级为不校验。
+
 **1. 安装 Nginx**
 ```bash
 sudo apt install nginx certbot python3-certbot-nginx -y
@@ -232,7 +236,9 @@ server {
         proxy_pass http://localhost:5000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Prefix "";
         proxy_set_header X-Forwarded-Proto $scheme;
 
         # WebSocket 支持（如果需要）
